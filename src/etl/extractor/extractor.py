@@ -22,6 +22,7 @@ class Source(ABC):
 def extractor(prefix: str = "") -> Callable:
     """
     Decorator that wraps a pipeline function returning API sources.
+    
     Usage:
         @extractor(prefix="BankData")
         def pipeline():
