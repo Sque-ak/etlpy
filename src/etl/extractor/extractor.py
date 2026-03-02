@@ -97,7 +97,7 @@ def extract_json(
         result["transactions"]  # id, sum, date
     """
     
-    if isinstance(json_data, list):
+    if isinstance(json_data, dict):
         json_data = [json_data]
 
     results: dict[str, pandas.DataFrame] = {}
