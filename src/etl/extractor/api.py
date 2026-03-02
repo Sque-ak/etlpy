@@ -2,7 +2,7 @@ from abc import abstractmethod
 import httpx, logging
 from datetime import datetime
 
-from .extractor import Source
+from etl.extractor import Source
 
 class API(Source):
     """
