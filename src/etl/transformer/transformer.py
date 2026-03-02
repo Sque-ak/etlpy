@@ -45,7 +45,6 @@ from etl.transformer.steps.step import Step
 
 TRANSFORMED_DIR = Path(os.environ.get("TRANSFORMED_DATA_DIR", "/data/stage"))
 
-
 class Pipeline(ABC):
     """
     Chain of transformation steps on PySpark DataFrame.
