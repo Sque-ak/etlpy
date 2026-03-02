@@ -1,32 +1,28 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "etlpy"
 version = "0.1.0"
-description = "A flexible set of utilities to extract, transform, and load data"
-requires-python = ">=3.10"
-dependencies = ["pandas>=2.2"]
+description = "A flexible set of utilities to extract, transform, and load data in your own ETL service"
+dependencies = ["pandas>=3.0.1"]
 
 [project.optional-dependencies]
 extractor = [
-  "httpx>=0.28.1",
-  "pyarrow>=15.0.0"
+    "httpx>=0.28.1",
+    "pyarrow>=15.0.0",
 ]
 transformer = [
-  "pyspark>=4.0.0"
+    "pyspark>=4.0.0"
 ]
 loader = []
-all = [
-  "httpx>=0.28.1",
-  "pyarrow>=15.0.0",
-  "pyspark>=4.0.0"
-]
+
+all = ["etlpy[extractor,transformer,loader]"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["etlpy*"]
+include = ["etl*"]
