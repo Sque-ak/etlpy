@@ -43,7 +43,7 @@ from datetime import datetime
 
 from etl.transformer.steps.step import Step
 
-TRANSFORMED_DIR = Path(os.environ.get("TRANSFORMED_DATA_DIR", "/data/transformed"))
+TRANSFORMED_DIR = Path(os.environ.get("TRANSFORMED_DATA_DIR", "/data/stage"))
 
 
 class Pipeline(ABC):
@@ -97,7 +97,7 @@ def transformer(prefix: str = "", output_dir: str | None = None):
 
     Example:
 
-        @transformer(prefix="clean", output_dir="/data/transformed")
+        @transformer(prefix="clean", output_dir="/data/stage")
         def transform_bank(df: DataFrame) -> tuple[Pipeline, DataFrame]:
             pipe = Pipeline([...])
             return pipe, df
