@@ -151,7 +151,6 @@ def _extract_nested(record: dict, parts: list[str], depth: int, output: list) ->
         output: List to append extracted rows to.
     """
     if depth >= len(parts):
-        # Reached target — record itself is what we want
         # Remove nested lists/dicts to keep it flat for this level
         flat = {k: v for k, v in record.items() if not isinstance(v, (list, dict))}
         output.append(flat)
