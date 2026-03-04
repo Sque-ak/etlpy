@@ -12,6 +12,7 @@
         storage = Storage(
             data="/data",
             raw="raw",
+            ref="ref",
             stg="stg",
             int="int",
             fact="fact",
@@ -22,6 +23,7 @@
         # Variant 3: Fully custom paths
         storage = Storage(
             raw="/mnt/lake/raw",
+            ref="/mnt/lake/ref",
             stg="/mnt/lake/stg",
             int="/mnt/lake/int",
             fact="/mnt/lake/fact",
@@ -56,10 +58,11 @@ from typing import Literal
 
 import pandas as pd
 
-LayerName = Literal["raw", "stg", "int", "fact", "failed", "archive"]
+LayerName = Literal["raw", "ref", "stg", "int", "fact", "failed", "archive"]
 
 _DEFAULT_LAYERS = {
     "raw": "raw",
+    "ref": "ref",
     "stg": "stg",
     "int": "int",
     "fact": "fact",
@@ -70,6 +73,7 @@ _DEFAULT_LAYERS = {
 _ENV_MAP = {
     "data": "LAKE_DATA_DIR",
     "raw": "RAW_DATA_DIR",
+    "ref": "REF_DATA_DIR",
     "stg": "STG_DATA_DIR",
     "int": "INT_DATA_DIR",
     "fact": "FACT_DATA_DIR",
@@ -89,6 +93,7 @@ class Storage:
         self,
         data: str | Path | None = None,
         raw: str | Path = "raw",
+        ref: str | Path = "ref",
         stg: str | Path = "stg",
         int: str | Path = "int",
         fact: str | Path = "fact",
@@ -102,6 +107,7 @@ class Storage:
         self._layers: dict[str, Path] = {}
         layers_args = {
             "raw": raw,
+            "ref": ref,
             "stg": stg,
             "int": int,
             "fact": fact,
@@ -122,6 +128,10 @@ class Storage:
     @property
     def raw_dir(self) -> Path:
         return self._layers["raw"]
+    
+    @property
+    def ref_dir(self) -> Path:
+        return self._layers["ref"]
     
     @property
     def stg_dir(self) -> Path:
