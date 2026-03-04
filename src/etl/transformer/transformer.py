@@ -4,31 +4,24 @@
     Example:
 
     from pyspark.sql import SparkSession
-    from etl.transformer import (
-        Pipeline, transformer,
-        DropNulls, DropDuplicates, CastTypes,
-        FilterRows, AddColumn, TrimStrings, SQLStep,
-    )
+    from etl.storage import Storage
+    from etl.transformer import Pipeline, transformer, DropNulls, CastTypes, FilterRows
 
     spark = SparkSession.builder.appName("bank_etl").getOrCreate()
+    storage = Storage(base_dir="/data")
 
-    @transformer(prefix="bank_clean")
+    @transformer(prefix="bank_clean", storage=storage)
     def transform_bank(df):
         pipe = Pipeline([
-            TrimStrings(),
             DropNulls(subset=["id", "amount"]),
-            DropDuplicates(subset=["id"]),
             CastTypes({"amount": "double", "date": "timestamp"}),
             FilterRows("amount > 0"),
-            AddColumn("tax", "amount * 0.12"),
-            SQLStep("SELECT *, amount - tax AS net_amount FROM source"),
         ])
         return pipe, df
 
     if __name__ == "__main__":
-        raw_df = spark.read.parquet("/data/raw/2026-03-02/bank_BerekeBank.parquet")
+        raw_df = spark.read.parquet(str(storage.path("raw", "bank_BerekeBank.parquet")))
         clean_df = transform_bank(raw_df)
-
         clean_df.show()
         spark.stop()
 """
@@ -42,8 +35,8 @@ from pathlib import Path
 from datetime import datetime
 
 from etl.transformer.steps.step import Step
+from etl.storage import Storage
 
-TRANSFORMED_DIR = Path(os.environ.get("TRANSFORMED_DATA_DIR", "/data/stage"))
 
 class Pipeline(ABC):
     """
@@ -87,17 +80,34 @@ class Pipeline(ABC):
         return f"Pipeline(steps=[\n  {steps_repr}\n])"
     
 
-def transformer(prefix: str = "", output_dir: str | None = None):
+def transformer(
+    prefix: str = "",     
+    storage: Storage | None = None,
+    layer: str = "stage",
+    format: str = "parquet",
+    save: bool = True
+    ) -> Callable:
     """
     Decorator for Spark transformation pipelines.
 
-    :param prefix: Optional prefix for the output file name.
-    :param output_dir: Directory to save the transformed DataFrame. If None, the DataFrame is returned without saving.
+    Args:
+        prefix: Optional prefix for the output file name.
+        storage: Storage instance. If None, uses default Storage().
+        layer: Target storage layer to save results. Default: "stage".
+        format: Output format. Default: "parquet".
+        save: Whether to save the result. Default: True.
 
     Example:
 
-        @transformer(prefix="clean", output_dir="/data/stage")
-        def transform_bank(df: DataFrame) -> tuple[Pipeline, DataFrame]:
+        storage = Storage(base_dir="/data")
+
+        @transformer(prefix="clean", storage=storage, layer="stage")
+        def transform_bank(df):
+            pipe = Pipeline([...])
+            return pipe, df
+
+        @transformer(prefix="report", storage=storage, layer="processed")
+        def aggregate_bank(df):
             pipe = Pipeline([...])
             return pipe, df
     """
@@ -108,16 +118,17 @@ def transformer(prefix: str = "", output_dir: str | None = None):
             pipe, df = fn(*args, **kwargs)
             result = pipe.run(df, verbose=True)
 
-            if output_dir is None:
-                output_dir = TRANSFORMED_DIR
+            if save:
+                _storage = storage or Storage()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{prefix}_{timestamp}" if prefix else f"{fn.__name__}_{timestamp}"
+                
+                output_path = _storage.path(layer, filename)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                result.write.mode("overwrite").format(format).save(str(output_path))
+                print(f"Saved to {output_path}")
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{prefix}_{timestamp}.parquet" if prefix else f"{timestamp}.parquet"
-            output_path = Path(output_dir) / filename
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
-            result.write.mode("overwrite").parquet(str(output_path))
-            print(f"Transformed DataFrame saved to: {output_path}")
             return result
 
         return wrapper

@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 from pathlib import Path
-import pandas, functools, os, datetime
-
-RAW_DIR = Path(os.environ.get("RAW_DATA_DIR", "/data/raw"))
+import pandas, functools, datetime
+from etl.storage import Storage
 
 class Source(ABC):
+    """Base class for all API data sources."""
 
-    folder = RAW_DIR
 
     @abstractmethod
     def extract(self):
@@ -19,7 +18,16 @@ class Source(ABC):
         """
         pass
 
-def extract_sources(sources: list[Source] | dict[str, Source] | Source, prefix: str = "") -> dict[str, pandas.DataFrame]:
+def extract_sources(sources: list[Source] | dict[str, Source] | Source, prefix: str = "", storage: Storage | None = None) -> dict[str, pandas.DataFrame]:
+    """
+    Extract data from sources and save as parquet.
+
+    Args:
+        sources: Source or list/dict of Sources.
+        prefix: Optional prefix for file names.
+        storage: Storage instance. If None, uses default Storage().
+    """
+    storage = storage or Storage()
     results: dict[str, pandas.DataFrame] = {}
 
     # Support both list and dict of sources
@@ -35,13 +43,12 @@ def extract_sources(sources: list[Source] | dict[str, Source] | Source, prefix: 
         )
 
     for name, source in source_map.items():
-        folder = Path(f"{source.folder}/{datetime.datetime.now().strftime('%Y-%m-%d')}")
-        folder.mkdir(parents=True, exist_ok=True)
-
         dataframe = pandas.DataFrame(source.extract())
-        filename = f"{prefix}_{name}" if prefix else name
-        dataframe.to_parquet(folder / f"{filename}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.parquet", index=False)
 
+        filename = f"{prefix}_{name}" if prefix else name
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        storage.write("raw", dataframe, f"{filename}_{timestamp}.parquet")
         results[name] = dataframe
 
     return results
@@ -51,6 +58,7 @@ def extract_json(
     prefix: str = "",
     flatten: dict[str, str | list[str]] | None = None,
     save: bool = True,
+    storage: Storage | None = None
 ) -> dict[str, pandas.DataFrame]:
     """
     Extract JSON data into multiple DataFrames, flattening nested arrays.
@@ -61,6 +69,7 @@ def extract_json(
         flatten: Dict mapping output DataFrame names to JSON paths (dot-separated). 
                  If None, the entire JSON is flattened into a single DataFrame under "main".
         save: Whether to save the extracted DataFrames as Parquet files in the RAW_DIR.
+        storage: Storage instance. If None, uses default Storage().
 
     Returns:
         Dict of DataFrames: {"main": ..., "transactions": ..., ...}
@@ -96,6 +105,7 @@ def extract_json(
         result["balance"]       # currency, total (without transactions)
         result["transactions"]  # id, sum, date
     """
+    storage = storage or Storage()
     
     if isinstance(json_data, dict):
         json_data = [json_data]
@@ -129,14 +139,12 @@ def extract_json(
         results["main"] = pandas.json_normalize(main_rows) if main_rows else pandas.DataFrame()
 
     if save and prefix:
-        folder = Path(f"{RAW_DIR}/{datetime.datetime.now().strftime('%Y-%m-%d')}")
-        folder.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         for name, df in results.items():
             if not df.empty:
                 filename = f"{prefix}_{name}_{timestamp}.parquet"
-                df.to_parquet(folder / filename, index=False)
+                storage.write("raw", df, filename)
 
     return results
    
@@ -170,7 +178,7 @@ def _extract_nested(record: dict, parts: list[str], depth: int, output: list) ->
     elif isinstance(value, dict):
         _extract_nested(value, parts, depth + 1, output)
 
-def extractor(prefix: str = "") -> Callable:
+def extractor(prefix: str = "", storage: Storage | None = None) -> Callable:
     """
     Decorator that wraps a pipeline function returning API sources.
     
@@ -183,7 +191,7 @@ def extractor(prefix: str = "") -> Callable:
     def decorator(fn: Callable) -> Callable[..., any]:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs) -> any:
-            return extract_sources(fn(*args, **kwargs), prefix=prefix)
+            return extract_sources(fn(*args, **kwargs), prefix=prefix, storage=storage)
 
         return wrapper
     return decorator
