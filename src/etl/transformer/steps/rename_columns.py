@@ -29,9 +29,9 @@ class RenameColumns(Step):
         :param df: Input DataFrame to transform
         :return: Transformed DataFrame with columns renamed
         """
-        return df.selectExpr(
-            *[f"{old} as {new}" for old, new in self.columns_mapping.items()]
-        )
+        for old, new in self.columns_mapping.items():
+            df = df.withColumnRenamed(old, new)
+        return df
         
     def __repr__(self) -> str:
         return f"RenameColumns(columns_mapping={self.columns_mapping})"
