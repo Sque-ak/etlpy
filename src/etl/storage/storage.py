@@ -260,7 +260,7 @@ class Storage:
         """
         folder = self.path(layer, date=date, mode=mode)
         if not folder.exists():
-            raise FileNotFoundError(f"Folder not found: {folder}")
+            return {}
 
         results = {}
         for file_path in sorted(folder.glob(pattern)):
