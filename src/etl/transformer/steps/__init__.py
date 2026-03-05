@@ -11,7 +11,8 @@ from etl.transformer.steps.normalize_numeric import NormalizeNumeric
 from etl.transformer.steps.rename_columns import RenameColumns
 from etl.transformer.steps.sql import SQL
 from etl.transformer.steps.trim_string import TrimString
-from etl.transformer.steps.step_lambada import Lambda 
+from etl.transformer.steps.step_lambada import Lambda
+from etl.transformer.steps.join import Join
 
 __all__ = [
     "Step",
@@ -28,4 +29,5 @@ __all__ = [
     "SQL",
     "Lambda",
     "Aggregate",
+    "Join",
 ]
