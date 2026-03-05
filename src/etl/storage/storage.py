@@ -50,13 +50,14 @@
 """
 
 from __future__ import annotations
-from ast import pattern
-import os, shutil, glob
+import os, shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Literal
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 LayerName = Literal["raw", "ref", "stg", "int", "fact", "failed", "archive"]
 
@@ -177,68 +178,119 @@ class Storage:
         base = self.layer_dir(layer) / (date or self._today())
         return base / filename if filename else base
     
-    def read(self, layer: LayerName, filename: str, date: str | None = None) -> pd.DataFrame:
+    def read(
+        self,
+        layer: LayerName,
+        filename: str,
+        date: str | None = None,
+        as_arrow: bool = False,
+    ) -> pd.DataFrame | pa.Table:
         """
         Read a parquet file from the specified layer and date partition.
 
+        For raw layer, reads via pandas (no schema enforcement).
+        For other layers, reads via PyArrow (preserves exact types and schema).
+
         Args:
-            layer: Layer name (raw, stage, processed, archive).
+            layer: Layer name.
             filename: Parquet file name to read.
             date: Date partition string (YYYY-MM-DD). Default: today.
+            as_arrow: If True, always return pyarrow.Table instead of DataFrame.
 
         Returns:
-            DataFrame read from the parquet file.
+            DataFrame or pyarrow.Table.
         """
         file_path = self.path(layer, filename, date)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        return pd.read_parquet(file_path)
-    
-    def read_all(self, layer: LayerName, date: str | None = None, pattern: str = "*.parquet") -> dict[str, pd.DataFrame]:
-        """
-        Read all parquet files from the specified layer and date partition into a single DataFrame.
 
-        Args:
-            layer: Layer name (raw, stage, processed, archive).
-            date: Date partition string (YYYY-MM-DD). Default: today.
-            pattern: Glob pattern to match files (default: "*.parquet").
-        
-        Returns:
-            Dict of {filename: DataFrame}.
-        """
+        if layer == "raw" and not as_arrow:
+            return pd.read_parquet(file_path)
 
-        folder = self.path(layer, date=date)
-        if not folder.exists():
-            raise FileNotFoundError(f"Folder not found: {folder}")
-        
-        results = {}
-        for file_path in sorted(folder.glob(pattern)):
-            results[file_path.stem] = pd.read_parquet(file_path)
-        return results
+        table = pq.read_table(file_path)
+        return table if as_arrow else table.to_pandas(types_mapper=pd.ArrowDtype)
     
-    def write(self, layer: LayerName, df: pd.DataFrame, filename: str, date: str | None = None, overwrite: bool = False) -> Path:
+    def read_all(
+        self,
+        layer: LayerName,
+        date: str | None = None,
+        pattern: str = "*.parquet",
+        as_arrow: bool = False,
+    ) -> dict[str, pd.DataFrame | pa.Table]:
         """
-        Write a DataFrame as parquet to a layer.
+        Read all parquet files from the specified layer and date partition.
 
         Args:
             layer: Layer name.
-            df: DataFrame to save.
+            date: Date partition string (YYYY-MM-DD). Default: today.
+            pattern: Glob pattern to match files (default: "*.parquet").
+            as_arrow: If True, return pyarrow.Table instead of DataFrame.
+
+        Returns:
+            Dict of {filename: DataFrame or Table}.
+        """
+        folder = self.path(layer, date=date)
+        if not folder.exists():
+            raise FileNotFoundError(f"Folder not found: {folder}")
+
+        results = {}
+        for file_path in sorted(folder.glob(pattern)):
+            results[file_path.stem] = self.read(layer, file_path.name, date, as_arrow=as_arrow)
+        return results
+    
+    def write(
+        self,
+        layer: LayerName,
+        data: pd.DataFrame | pa.Table,
+        filename: str,
+        date: str | None = None,
+        overwrite: bool = False,
+        schema: pa.Schema | None = None,
+    ) -> Path:
+        """
+        Write data as parquet to a layer.
+
+        For raw layer: writes via pandas (fast, no schema enforcement).
+        For other layers: writes via PyArrow (preserves types, supports schema).
+
+        Accepts both pandas DataFrame and pyarrow Table.
+
+        Args:
+            layer: Layer name.
+            data: pandas DataFrame or pyarrow Table to save.
             filename: Output file name.
             date: Date partition. Default: today.
             overwrite: If True, overwrite existing file. If False and file exists,
                        the old file is archived first.
+            schema: Optional pyarrow Schema to enforce on write (non-raw layers only).
 
         Returns:
             Path to the saved file.
         """
-
         file_path = self.path(layer, filename, date)
 
         if file_path.exists() and not overwrite:
             self.archive_file(layer, filename, date)
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(file_path, index=False)
+
+        if layer == "raw":
+            # Raw: simple pandas write, no schema enforcement
+            if isinstance(data, pa.Table):
+                data = data.to_pandas()
+            data.to_parquet(file_path, index=False)
+        else:
+            # Other layers: pyarrow write with type preservation
+            if isinstance(data, pd.DataFrame):
+                table = pa.Table.from_pandas(data, preserve_index=False)
+            else:
+                table = data
+
+            if schema:
+                table = table.cast(schema)
+
+            pq.write_table(table, file_path)
+
         return file_path
     
     def list(self, layer: LayerName, date: str | None = None, pattern: str = "*.parquet") -> list[Path]:
