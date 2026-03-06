@@ -13,6 +13,7 @@ from etl.transformer.steps.sql import SQL
 from etl.transformer.steps.trim_string import TrimString
 from etl.transformer.steps.step_lambada import Lambda
 from etl.transformer.steps.join import Join
+from etl.transformer.steps.generate_key import GenerateKey
 
 __all__ = [
     "Step",
@@ -30,4 +31,5 @@ __all__ = [
     "Lambda",
     "Aggregate",
     "Join",
+    "GenerateKey",
 ]

@@ -31,20 +31,20 @@ class Join(Step):
         keys) are prefixed with this string — handy for avoiding name
         collisions, e.g. ``prefix="company_"`` → ``company_name``.
 
-    Example
-    -------
-    >>> from etl.transformer.steps import Join
-    >>>
-    >>> companies = spark.read.parquet("stg/companies")
-    >>> transactions = spark.read.parquet("stg/transactions")
-    >>>
-    >>> step = Join(
-    ...     other=companies,
-    ...     on="company_id",
-    ...     select=["company_name", "bin"],
-    ...     how="left",
-    ... )
-    >>> result = step.apply(transactions)
+    Example:
+
+        from etl.transformer.steps import Join
+        
+        companies = spark.read.parquet("stg/companies")
+        transactions = spark.read.parquet("stg/transactions")
+        
+        step = Join(
+            other=companies,
+            on="company_id",
+            select=["company_name", "bin"],
+            how="left",
+        )
+        result = step.apply(transactions)
     """
 
     def __init__(
@@ -61,27 +61,23 @@ class Join(Step):
         self.select = select
         self.prefix = prefix
 
-    # ------------------------------------------------------------------
     # Step interface
-    # ------------------------------------------------------------------
     def apply(self, df: DataFrame) -> DataFrame:
         right = self._prepare_right()
         result = df.join(right, on=self.on, how=self.how)
         return result
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
     def _prepare_right(self) -> DataFrame:
         """Optionally select columns and apply prefix to the right DataFrame."""
         right = self.other
 
-        # --- select only requested columns (+ join keys) ---------------
+        # select only requested columns (+ join keys)
         if self.select is not None:
             keep = list(dict.fromkeys(self.on + self.select))  # deduplicate, preserve order
             right = right.select(*keep)
 
-        # --- prefix non-key columns ------------------------------------
+        # prefix non-key columns 
         if self.prefix:
             for col_name in right.columns:
                 if col_name not in self.on:
