@@ -388,12 +388,21 @@ class Storage:
         Regular glob finds files/dirs whose names match *pattern*.
         Additionally, any sub-directory that looks like a Spark parquet output
         (contains ``_SUCCESS`` or ``part-*.parquet``) is included even if its
-        name does not end with ``.parquet``.
+        name does not end with ``.parquet``, as long as its name matches *pattern*
+        (with or without the ``.parquet`` suffix).
         """
+        import fnmatch
+
         results = set(folder.glob(pattern))
         for item in folder.iterdir():
             if item not in results and self._is_spark_parquet_dir(item):
-                results.add(item)
+                # Match dir name against pattern directly,
+                # and also try with .parquet suffix (e.g. pattern="transactions.*")
+                if (
+                    fnmatch.fnmatch(item.name, pattern)
+                    or fnmatch.fnmatch(item.name + ".parquet", pattern)
+                ):
+                    results.add(item)
         return sorted(results)
 
     def _list_single(
