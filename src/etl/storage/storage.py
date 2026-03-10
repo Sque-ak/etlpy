@@ -455,7 +455,7 @@ class Storage:
         date: str | None,
         mode: Mode,
     ) -> Path | None:
-        """Archive a single file."""
+        """Archive a single file, preserving layer name in archive path."""
         if mode == Mode.STATIC:
             source = self.layer_dir(layer) / "static" / filename
         else:
@@ -467,12 +467,13 @@ class Storage:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         stem = source.stem
         suffix = source.suffix
+        layer_name = str(layer)
 
         if mode == Mode.STATIC:
-            archive_path = self.archive_dir / "static" / f"{stem}_{timestamp}{suffix}"
+            archive_path = self.archive_dir / "static" / layer_name / f"{stem}_{timestamp}{suffix}"
         else:
-            date_str = date or self._today()
-            archive_path = self.archive_dir / date_str / f"{stem}_{timestamp}{suffix}"
+            archive_date = self._today()
+            archive_path = self.archive_dir / archive_date / layer_name / f"{stem}_{timestamp}{suffix}"
 
         archive_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(archive_path))
