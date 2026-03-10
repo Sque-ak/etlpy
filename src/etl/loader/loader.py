@@ -182,7 +182,10 @@ class Loader:
         fname = filename or f"{table}.parquet"
 
         # Read 
-        df = self.storage.read(layer, fname, date=date, mode=mode)
+        # Read as PyArrow Table, then convert to plain pandas
+        # (avoids ArrowDtype types that clickhouse-connect can't handle)
+        table = self.storage.read(layer, fname, date=date, mode=mode, as_arrow=True)
+        df = table.to_pandas()
         logger.info("Read %d rows from %s/%s", len(df), layer, fname)
 
         # DDL 
