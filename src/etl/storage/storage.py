@@ -263,7 +263,7 @@ class Storage:
             return {}
 
         results = {}
-        for file_path in sorted(folder.glob(pattern)):
+        for file_path in self._list_parquet(folder, pattern):
             results[file_path.stem] = self.read(
                 layer, file_path.name, date, mode=mode, as_arrow=as_arrow,
             )
@@ -370,6 +370,32 @@ class Storage:
 
         return self._list_single(layer, date, pattern, mode)
 
+    @staticmethod
+    def _is_spark_parquet_dir(path: Path) -> bool:
+        """Check if a directory is a Spark-style parquet output."""
+        if not path.is_dir():
+            return False
+        return (
+            (path / "_SUCCESS").exists()
+            or any(path.glob("part-*.parquet"))
+            or any(path.glob("part-*.snappy.parquet"))
+        )
+
+    def _list_parquet(self, folder: Path, pattern: str = "*.parquet") -> list[Path]:
+        """
+        List parquet files **and** Spark-style parquet directories in *folder*.
+
+        Regular glob finds files/dirs whose names match *pattern*.
+        Additionally, any sub-directory that looks like a Spark parquet output
+        (contains ``_SUCCESS`` or ``part-*.parquet``) is included even if its
+        name does not end with ``.parquet``.
+        """
+        results = set(folder.glob(pattern))
+        for item in folder.iterdir():
+            if item not in results and self._is_spark_parquet_dir(item):
+                results.add(item)
+        return sorted(results)
+
     def _list_single(
         self,
         layer: LayerName,
@@ -382,20 +408,22 @@ class Storage:
             folder = self.layer_dir(layer) / "static"
             if not folder.exists():
                 return []
-            return sorted(folder.glob(pattern))
+            return self._list_parquet(folder, pattern)
 
         if date == "*":
-            folder = self.layer_dir(layer)
-            # Exclude static/ from wildcard listing
-            return sorted(
-                p for p in folder.rglob(pattern)
-                if "static" not in p.parts
-            )
+            layer_dir = self.layer_dir(layer)
+            if not layer_dir.exists():
+                return []
+            results: list[Path] = []
+            for sub in sorted(layer_dir.iterdir()):
+                if sub.is_dir() and sub.name != "static":
+                    results.extend(self._list_parquet(sub, pattern))
+            return sorted(results)
 
         folder = self.layer_dir(layer) / (date or self._today())
         if not folder.exists():
             return []
-        return sorted(folder.glob(pattern))
+        return self._list_parquet(folder, pattern)
     
     def list_dates(self, layer: LayerName) -> list[str]:
         """
@@ -412,10 +440,7 @@ class Storage:
             if d.is_dir() and len(d.name) == 10  # YYYY-MM-DD
         )
 
-    # -------------------------------------------------------------------------
     # Archive
-    # -------------------------------------------------------------------------
-
     def archive_file(
         self,
         layer: LayerName,
