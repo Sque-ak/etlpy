@@ -64,7 +64,7 @@ from typing import Literal
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from etl.storage import Storage, Layer, Mode, LayerName
+from etl.storage import Storage, Layer, Mode
 
 logger = logging.getLogger(__name__)
  
@@ -148,7 +148,7 @@ class Loader:
     def load(
         self,
         table: str,
-        layer: LayerName = Layer.FACT,
+        layer: Layer = Layer.FACT,
         filename: str | None = None,
         date: str | None = None,
         mode: Mode = Mode.DATE,
@@ -203,7 +203,7 @@ class Loader:
 
     def load_all(
         self,
-        layer: LayerName = Layer.FACT,
+        layer: Layer = Layer.FACT,
         date: str | None = None,
         mode: Mode = Mode.DATE,
         archive: bool = True,
