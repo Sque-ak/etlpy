@@ -424,6 +424,13 @@ class Loader:
             columns={"row_hash": "_existing_hash"}
         )
 
+        # Align biz_key dtypes: ClickHouse may return strings while
+        # parquet DataFrame has datetime64/other typed columns.
+        for col in biz_key:
+            if col in new_df.columns and col in existing.columns:
+                if new_df[col].dtype != existing[col].dtype:
+                    existing[col] = existing[col].astype(new_df[col].dtype)
+
         merged = new_df.merge(existing, on=biz_key, how="left")
 
         # New (NaN) or changed (hash mismatch)
