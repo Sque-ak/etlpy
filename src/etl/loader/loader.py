@@ -17,21 +17,21 @@ Example::
         database="analytics",
     )
 
-    # --- Simple full load ---------------------------------------------------
+    # Simple full load
 
-    # Load a single fact file → ClickHouse table
+    # Load a single fact file -> ClickHouse table
     loader.load("transactions", layer=Layer.FACT)
 
-    # Load ALL fact files → one table per file, then archive
+    # Load ALL fact files -> one table per file, then archive
     loader.load_all(layer=Layer.FACT, archive=True)
 
-    # --- Incremental load (row_hash) ----------------------------------------
+    # Incremental load (row_hash)
 
     # If the parquet file contains ``row_hash`` and ``_loaded_at`` columns
     # (added by the transformer's RowHash + AddColumn steps), the loader
     # can compare hashes to only insert new or changed rows.
     #
-    # Just pass ``biz_key`` — the business key column(s) used for matching:
+    # Just pass ``biz_key`` - the business key column(s) used for matching:
 
     loader.load(
         "transactions",
@@ -151,7 +151,7 @@ class Loader:
     **Incremental load** (when ``biz_key`` is provided)
         Compares ``row_hash`` from the parquet file with existing hashes in
         ClickHouse (via ``SELECT ... FINAL``).  Only new or changed rows are
-        inserted.  Uses ``ReplacingMergeTree(_loaded_at)`` — ClickHouse
+        inserted.  Uses ``ReplacingMergeTree(_loaded_at)`` - ClickHouse
         automatically deduplicates rows with the same ORDER BY key, keeping
         the row with the latest ``_loaded_at``.
 
@@ -184,10 +184,6 @@ class Loader:
             **kwargs,
         )
         logger.info("Connected to ClickHouse at %s:%s/%s", host, port, database)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def load(
         self,
@@ -291,7 +287,7 @@ class Loader:
         """
         Load **all** parquet files from a Storage layer into ClickHouse.
 
-        Each file becomes a separate table (``filename stem → table name``).
+        Each file becomes a separate table (``filename stem -> table name``).
 
         Args:
             layer: Source layer (default: FACT).
@@ -305,7 +301,7 @@ class Loader:
             partition_by: ``PARTITION BY`` expression (global default).
             if_exists: ``"append"`` / ``"replace"`` / ``"error"``.
             table_prefix: Auto-prefix for table names
-                          (e.g. ``"fact_"`` → ``fact_transactions``).
+                          (e.g. ``"fact_"`` -> ``fact_transactions``).
             table_map: Explicit mapping ``{file_stem: table_name}``.
                        Files not in the map fall back to
                        ``table_prefix + stem``.
@@ -374,10 +370,6 @@ class Loader:
         )
         return loaded
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
     def query(self, sql: str):
         """Execute a ``SELECT`` and return a pandas DataFrame."""
         return self.client.query_df(sql)
@@ -395,9 +387,7 @@ class Loader:
         """Check if a table exists in ClickHouse."""
         return bool(self.client.command(f"EXISTS TABLE {table}"))
 
-    # ------------------------------------------------------------------
     # Incremental (delta) loading internals
-    # ------------------------------------------------------------------
 
     def _get_existing_hashes(self, table: str, biz_key: list[str]) -> pd.DataFrame:
         """Fetch ``row_hash`` by business key from ClickHouse (FINAL for dedup)."""
@@ -419,8 +409,8 @@ class Loader:
         Compare ``row_hash`` in *new_df* with existing hashes in ClickHouse.
 
         Returns only rows that are new or changed:
-          - ``biz_key`` not found in ClickHouse → new row
-          - ``row_hash`` differs → changed row
+          - ``biz_key`` not found in ClickHouse -> new row
+          - ``row_hash`` differs -> changed row
         """
         if not self.table_exists(table):
             return new_df
@@ -449,9 +439,7 @@ class Loader:
 
         return delta
 
-    # ------------------------------------------------------------------
     # DDL internals
-    # ------------------------------------------------------------------
 
     def _ensure_table(
         self,
