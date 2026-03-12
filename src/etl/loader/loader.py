@@ -17,18 +17,44 @@ Example::
         database="analytics",
     )
 
+    # --- Simple full load ---------------------------------------------------
+
     # Load a single fact file → ClickHouse table
     loader.load("transactions", layer=Layer.FACT)
 
     # Load ALL fact files → one table per file, then archive
     loader.load_all(layer=Layer.FACT, archive=True)
 
-    # With table prefix
-    loader.load_all(layer=Layer.FACT, table_prefix="fact_")
+    # --- Incremental load (row_hash) ----------------------------------------
 
-    # With explicit name mapping
+    # If the parquet file contains ``row_hash`` and ``_loaded_at`` columns
+    # (added by the transformer's RowHash + AddColumn steps), the loader
+    # can compare hashes to only insert new or changed rows.
+    #
+    # Just pass ``biz_key`` — the business key column(s) used for matching:
+
+    loader.load(
+        "transactions",
+        layer=Layer.FACT,
+        biz_key=["transaction_id"],          # delta comparison key
+        engine="ReplacingMergeTree(_loaded_at)",
+        partition_by="toYYYYMM(toDate(date))",
+    )
+
+    # load_all with per-table config
     loader.load_all(
         layer=Layer.FACT,
+        table_config={
+            "fact_transactions": {
+                "order_by": ["transaction_id"],
+                "partition_by": "toYYYYMM(toDate(date))",
+                "biz_key": ["transaction_id"],
+            },
+            "fact_accounts": {
+                "order_by": ["account_id"],
+                "biz_key": ["account_id"],
+            },
+        },
         table_map={"transactions": "fact_transactions"},
     )
 
@@ -61,6 +87,7 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -115,6 +142,19 @@ class Loader:
     """
     Load data from Storage layers into ClickHouse.
 
+    Supports two loading strategies:
+
+    **Full load** (default)
+        Reads the parquet file and inserts all rows.
+        Uses ``MergeTree`` engine.
+
+    **Incremental load** (when ``biz_key`` is provided)
+        Compares ``row_hash`` from the parquet file with existing hashes in
+        ClickHouse (via ``SELECT ... FINAL``).  Only new or changed rows are
+        inserted.  Uses ``ReplacingMergeTree(_loaded_at)`` — ClickHouse
+        automatically deduplicates rows with the same ORDER BY key, keeping
+        the row with the latest ``_loaded_at``.
+
     After a successful load the source files are (optionally) archived
     through :class:`etl.Storage` so the Data Lake stays clean.
     """
@@ -145,6 +185,10 @@ class Loader:
         )
         logger.info("Connected to ClickHouse at %s:%s/%s", host, port, database)
 
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
     def load(
         self,
         table: str,
@@ -154,11 +198,12 @@ class Loader:
         mode: Mode = Mode.DATE,
         archive: bool = True,
         create: bool = True,
-        engine: str = "MergeTree",
+        engine: str | None = None,
         order_by: str | list[str] | None = None,
         partition_by: str | None = None,
         if_exists: Literal["append", "replace", "error"] = "append",
-    ) -> None:
+        biz_key: list[str] | None = None,
+    ) -> int:
         """
         Load a single parquet file from Storage into a ClickHouse table.
 
@@ -170,39 +215,62 @@ class Loader:
             mode: Storage read mode.
             archive: If True, archive the file after successful load.
             create: Auto-create the table if it doesn't exist.
-            engine: ClickHouse engine (default: ``MergeTree``).
-            order_by: ``ORDER BY`` column(s) for MergeTree.
+            engine: ClickHouse engine.  Auto-detected:
+                    ``ReplacingMergeTree(_loaded_at)`` when ``biz_key`` is set,
+                    ``MergeTree`` otherwise.
+            order_by: ``ORDER BY`` column(s) for the engine.
                       Auto-detected from schema when *None*.
             partition_by: Optional ``PARTITION BY`` expression
-                          (e.g. ``"toYYYYMM(date)"``).
+                          (e.g. ``"toYYYYMM(toDate(date))"``).
             if_exists: ``"append"`` — insert new rows,
                        ``"replace"`` — truncate then insert,
                        ``"error"`` — raise if table exists.
+            biz_key: Business key column(s) for incremental (delta) loading.
+                     When provided, the loader compares ``row_hash`` in the
+                     parquet with existing hashes in ClickHouse and inserts
+                     only new/changed rows.  Requires ``row_hash`` column
+                     (see :class:`etl.transformer.steps.RowHash`).
+
+        Returns:
+            Number of rows inserted.
         """
         fname = filename or f"{table}.parquet"
 
-        # Read 
+        # Auto-select engine
+        if engine is None:
+            engine = "ReplacingMergeTree(_loaded_at)" if biz_key else "MergeTree"
+
         # Read as PyArrow Table, then convert to plain pandas
         # (avoids ArrowDtype types that clickhouse-connect can't handle)
         arrow_table = self.storage.read(layer, fname, date=date, mode=mode, as_arrow=True)
         df = arrow_table.to_pandas()
         logger.info("Read %d rows from %s/%s", len(df), layer, fname)
 
-        # DDL 
+        # DDL
         if create:
             self._ensure_table(table, df, engine, order_by, partition_by, if_exists)
 
         if if_exists == "replace":
             self.client.command(f"TRUNCATE TABLE {table}")
 
-        # Insert 
-        self.client.insert_df(table, df)
-        logger.info("Loaded %d rows into %s", len(df), table)
+        # Delta comparison (incremental)
+        if biz_key and "row_hash" in df.columns:
+            df = self._compute_delta(table, df, biz_key)
 
-        # Archive 
+        if df.empty:
+            logger.info("No changes for %s — skipping INSERT", table)
+        else:
+            self.client.insert_df(table, df)
+            logger.info("Loaded %d rows into %s", len(df), table)
+
+        rows_loaded = len(df)
+
+        # Archive
         if archive:
             self.storage.archive_file(layer, fname, date=date, mode=mode)
             logger.info("Archived %s/%s", layer, fname)
+
+        return rows_loaded
 
     def load_all(
         self,
@@ -211,17 +279,19 @@ class Loader:
         mode: Mode = Mode.DATE,
         archive: bool = True,
         create: bool = True,
-        engine: str = "MergeTree",
+        engine: str | None = None,
         order_by: str | list[str] | None = None,
         partition_by: str | None = None,
         if_exists: Literal["append", "replace", "error"] = "append",
         table_prefix: str = "",
         table_map: dict[str, str] | None = None,
+        table_config: dict[str, dict] | None = None,
+        biz_key: list[str] | None = None,
     ) -> list[str]:
         """
         Load **all** parquet files from a Storage layer into ClickHouse.
 
-        Each file becomes a separate table (``filename stem -> table name``).
+        Each file becomes a separate table (``filename stem → table name``).
 
         Args:
             layer: Source layer (default: FACT).
@@ -229,15 +299,31 @@ class Loader:
             mode: Storage read mode.
             archive: Archive files after load.
             create: Auto-create tables.
-            engine: ClickHouse engine.
-            order_by: ``ORDER BY`` column(s).
-            partition_by: ``PARTITION BY`` expression.
+            engine: ClickHouse engine (applied to all tables unless
+                    overridden by ``table_config``).
+            order_by: ``ORDER BY`` column(s) (global default).
+            partition_by: ``PARTITION BY`` expression (global default).
             if_exists: ``"append"`` / ``"replace"`` / ``"error"``.
             table_prefix: Auto-prefix for table names
-                          (e.g. ``"fact_"`` -> ``fact_transactions``).
+                          (e.g. ``"fact_"`` → ``fact_transactions``).
             table_map: Explicit mapping ``{file_stem: table_name}``.
                        Files not in the map fall back to
                        ``table_prefix + stem``.
+            table_config: Per-table settings dict::
+
+                    {
+                        "fact_transactions": {
+                            "order_by": ["transaction_id"],
+                            "partition_by": "toYYYYMM(toDate(date))",
+                            "biz_key": ["transaction_id"],
+                            "engine": "ReplacingMergeTree(_loaded_at)",
+                        },
+                    }
+
+                Keys: ``order_by``, ``partition_by``, ``biz_key``, ``engine``.
+                Missing keys fall back to the method-level defaults.
+            biz_key: Global ``biz_key`` default (used when ``table_config``
+                     doesn't specify one for a given table).
 
         Returns:
             List of successfully loaded table names.
@@ -247,6 +333,8 @@ class Loader:
             logger.warning("No files found in %s layer", layer)
             return []
 
+        table_config = table_config or {}
+
         loaded: list[str] = []
         for file_path in files:
             stem = file_path.stem
@@ -255,25 +343,40 @@ class Loader:
             else:
                 table_name = f"{table_prefix}{stem}"
 
-            self.load(
-                table=table_name,
-                layer=layer,
-                filename=file_path.name,
-                date=date,
-                mode=mode,
-                archive=archive,
-                create=create,
-                engine=engine,
-                order_by=order_by,
-                partition_by=partition_by,
-                if_exists=if_exists,
-            )
-            loaded.append(table_name)
+            # Per-table overrides
+            cfg = table_config.get(table_name, {})
+            t_order_by = cfg.get("order_by", order_by)
+            t_partition_by = cfg.get("partition_by", partition_by)
+            t_biz_key = cfg.get("biz_key", biz_key)
+            t_engine = cfg.get("engine", engine)
+
+            try:
+                self.load(
+                    table=table_name,
+                    layer=layer,
+                    filename=file_path.name,
+                    date=date,
+                    mode=mode,
+                    archive=archive,
+                    create=create,
+                    engine=t_engine,
+                    order_by=t_order_by,
+                    partition_by=t_partition_by,
+                    if_exists=if_exists,
+                    biz_key=t_biz_key,
+                )
+                loaded.append(table_name)
+            except Exception as e:
+                logger.error("Failed to load %s: %s", table_name, e, exc_info=True)
 
         logger.info(
             "Loaded %d table(s) from %s layer: %s", len(loaded), layer, loaded
         )
         return loaded
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     def query(self, sql: str):
         """Execute a ``SELECT`` and return a pandas DataFrame."""
@@ -288,7 +391,68 @@ class Loader:
         df = self.client.query_df(f"SHOW TABLES FROM {self.database}")
         return df.iloc[:, 0].tolist() if len(df) > 0 else []
 
-    # Internal
+    def table_exists(self, table: str) -> bool:
+        """Check if a table exists in ClickHouse."""
+        return bool(self.client.command(f"EXISTS TABLE {table}"))
+
+    # ------------------------------------------------------------------
+    # Incremental (delta) loading internals
+    # ------------------------------------------------------------------
+
+    def _get_existing_hashes(self, table: str, biz_key: list[str]) -> pd.DataFrame:
+        """Fetch ``row_hash`` by business key from ClickHouse (FINAL for dedup)."""
+        key_cols = ", ".join(f"`{c}`" for c in biz_key)
+        sql = f"SELECT {key_cols}, `row_hash` FROM {table} FINAL"
+        try:
+            return self.client.query_df(sql)
+        except Exception as e:
+            logger.warning("Could not read hashes from %s: %s", table, e)
+            return pd.DataFrame()
+
+    def _compute_delta(
+        self,
+        table: str,
+        new_df: pd.DataFrame,
+        biz_key: list[str],
+    ) -> pd.DataFrame:
+        """
+        Compare ``row_hash`` in *new_df* with existing hashes in ClickHouse.
+
+        Returns only rows that are new or changed:
+          - ``biz_key`` not found in ClickHouse → new row
+          - ``row_hash`` differs → changed row
+        """
+        if not self.table_exists(table):
+            return new_df
+
+        existing_df = self._get_existing_hashes(table, biz_key)
+
+        if existing_df.empty or "row_hash" not in existing_df.columns:
+            return new_df
+
+        existing = existing_df[biz_key + ["row_hash"]].rename(
+            columns={"row_hash": "_existing_hash"}
+        )
+
+        merged = new_df.merge(existing, on=biz_key, how="left")
+
+        # New (NaN) or changed (hash mismatch)
+        mask = (
+            merged["_existing_hash"].isna()
+            | (merged["row_hash"] != merged["_existing_hash"])
+        )
+        delta = merged.loc[mask].drop(columns=["_existing_hash"])
+
+        skipped = len(new_df) - len(delta)
+        if skipped > 0:
+            logger.info("Skipped %d unchanged rows for %s", skipped, table)
+
+        return delta
+
+    # ------------------------------------------------------------------
+    # DDL internals
+    # ------------------------------------------------------------------
+
     def _ensure_table(
         self,
         table: str,
@@ -340,7 +504,7 @@ class Loader:
         )
 
         self.client.command(ddl)
-        logger.info("Created table %s", table)
+        logger.info("Created table %s (%s)", table, engine)
 
     @staticmethod
     def _detect_order_by(schema: pa.Schema) -> list[str]:
