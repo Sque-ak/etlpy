@@ -75,7 +75,7 @@ class ClickHouse(Source):
             secure=secure,
             **kwargs,
         )
-        logger.info("Connected to ClickHouse at %s:%s/%s", host, port, database)----
+        logger.info("Connected to ClickHouse at %s:%s/%s", host, port, database)
 
     def extract(self) -> pd.DataFrame:
         """

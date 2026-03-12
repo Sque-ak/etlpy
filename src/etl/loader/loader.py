@@ -462,18 +462,32 @@ class Loader:
         # Build DDL from pyarrow schema
         pa_table = pa.Table.from_pandas(df, preserve_index=False)
 
-        columns_ddl: list[str] = []
-        for field in pa_table.schema:
-            ch_type = _arrow_type_to_ch(field.type)
-            if field.nullable and ch_type not in ("String",):
-                ch_type = f"Nullable({ch_type})"
-            columns_ddl.append(f"    `{field.name}` {ch_type}")
-
-        # ORDER BY
+        # ORDER BY — resolve early so we know which columns must be non-nullable
         if order_by is None:
             order_by = self._detect_order_by(pa_table.schema)
         if isinstance(order_by, str):
             order_by = [order_by]
+
+        # Columns that ClickHouse requires to be non-nullable:
+        #  - ORDER BY keys (primary key of MergeTree)
+        #  - ReplacingMergeTree version column (e.g. _loaded_at)
+        #  - row_hash (always populated by RowHash step)
+        non_nullable: set[str] = set(order_by or [])
+        non_nullable.add("row_hash")
+
+        # Extract version column from engine string, e.g. "ReplacingMergeTree(_loaded_at)"
+        import re
+        ver_match = re.search(r"ReplacingMergeTree\((\w+)\)", engine)
+        if ver_match:
+            non_nullable.add(ver_match.group(1))
+
+        columns_ddl: list[str] = []
+        for field in pa_table.schema:
+            ch_type = _arrow_type_to_ch(field.type)
+            if field.nullable and ch_type not in ("String",) and field.name not in non_nullable:
+                ch_type = f"Nullable({ch_type})"
+            columns_ddl.append(f"    `{field.name}` {ch_type}")
+
         order_clause = (
             ", ".join(f"`{c}`" for c in order_by) if order_by else "tuple()"
         )
