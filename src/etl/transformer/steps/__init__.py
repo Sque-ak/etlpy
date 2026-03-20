@@ -16,6 +16,7 @@ from etl.transformer.steps.join import Join
 from etl.transformer.steps.generate_key import GenerateKey
 from etl.transformer.steps.row_hash import RowHash
 from etl.transformer.steps.extract_entities import ExtractEntities
+from etl.transformer.steps.clear_text import ClearText
 
 __all__ = [
     "Step",
@@ -36,4 +37,5 @@ __all__ = [
     "GenerateKey",
     "RowHash",
     "ExtractEntities",
+    "ClearText",
 ]
