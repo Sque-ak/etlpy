@@ -2,7 +2,7 @@ from etl.transformer.steps import Step
 from pyspark.sql import DataFrame, functions as F
 
 
-class CleanText(Step):
+class ClearText(Step):
     """ Clean text fields by removing special characters (\\r\\n, quotes) and trimming whitespace.
 
         :param columns: list of columns to clean
