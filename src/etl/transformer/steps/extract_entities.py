@@ -2,7 +2,7 @@ from etl.transformer.steps import Step
 from pyspark.sql import DataFrame, functions as F
 
 
-class StepExtractEntities(Step):
+class ExtractEntities(Step):
     """Extract entities from multiple sets of columns and combine them using UNION.
 
     Parameters:
