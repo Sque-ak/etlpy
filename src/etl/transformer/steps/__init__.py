@@ -15,6 +15,7 @@ from etl.transformer.steps.step_lambada import Lambda
 from etl.transformer.steps.join import Join
 from etl.transformer.steps.generate_key import GenerateKey
 from etl.transformer.steps.row_hash import RowHash
+from etl.transformer.steps.extract_entities import ExtractEntities
 
 __all__ = [
     "Step",
@@ -34,4 +35,5 @@ __all__ = [
     "Join",
     "GenerateKey",
     "RowHash",
+    "ExtractEntities",
 ]
