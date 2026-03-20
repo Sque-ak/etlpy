@@ -511,6 +511,11 @@ class Storage:
 
         archive_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(archive_path))
+
+        parent = source.parent
+        if parent.exists() and not any(parent.iterdir()):
+            parent.rmdir()
+
         return archive_path
 
     def archive_layer(
