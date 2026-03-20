@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "etlpy"
-version = "0.1.0"
+version = "0.1.4"
 description = "A flexible set of utilities to extract, transform, and load data in your own ETL service"
 dependencies = [
     "pandas>=3.0.1", 
