@@ -1,26 +1,15 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
-from pyspark.sql import functions as F
-
+import polars as pl, polars_hash # noqa: F401 - registers the .chash namespace
+from etl.generic.step import Step
 
 class RowHash(Step):
     """
-    Generates a SHA-256 hash of all columns in a row.
+    SHA-256 fingerprint of all row values, written to 'row_hash'.
+    Used by the loader to insert only new/changed rows.
 
-    Automatically excludes the following columns from the hash calculation to avoid circular dependencies and ensure stability:
-      - 'row_hash'   (the result itself)
-      - '_loaded_at' (meta field for load timestamp)
-      - any columns from 'exclude'
+    Excludes 'row_hash', '_loaded_at', and any columns in 'exclude'.
 
-    Result: a new column 'row_hash' (string, 64-character hex).
-
-    Example::
-
-        Pipeline([
-            ...,
-            RowHash(),                        # hash all columns
-            AddColumn("_loaded_at", F.current_timestamp()),
-        ])
+    Example:
+        Pipeline([..., RowHash(), AddColumn("_loaded_at", pl.lit(datetime.now()))])
     """
 
     _META = frozenset({"row_hash", "_loaded_at"})
@@ -29,15 +18,15 @@ class RowHash(Step):
         self.exclude = set(exclude or [])
         self.separator = separator
 
-    def apply(self, df: DataFrame) -> DataFrame:
+    async def apply(self, df: pl.DataFrame, data = None):
         skip = self._META | self.exclude
-        cols = [c for c in df.columns if c not in skip]
-
-        concat_expr = F.concat_ws(
-            self.separator,
-            *[F.coalesce(F.col(c).cast("string"), F.lit("__null__")) for c in cols],
+        cols = sorted(column for column in df.columns if column not in skip)
+        fingerprint = pl.concat_str(
+            [pl.col(column).cast(pl.String).fill_null("__null__") for column in cols],
+            separator=self.separator
         )
-        return df.withColumn("row_hash", F.sha2(concat_expr, 256))
+
+        return df.with_columns(fingerprint.chash.sha2_256().alias("row_hash"))
 
     def __repr__(self) -> str:
         return f"RowHash(exclude={sorted(self.exclude)!r}, separator={self.separator!r})"

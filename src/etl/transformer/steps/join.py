@@ -1,55 +1,36 @@
 from __future__ import annotations
-from pyspark.sql import DataFrame
-from etl.transformer.steps.step import Step
-
+from polars import DataFrame
+from etl.generic.step import Step
+from etl.generic.pipeline import Pipeline
 
 class Join(Step):
     """
-    Join two DataFrames on one or more columns.
-
-    The primary DataFrame (passed to 'apply()') is the **left** side;
-    the 'other' DataFrame supplied at construction time is the **right** side.
+    Join the incoming DataFrame (left) with another DataFrame (right).
 
     Parameters
     ----------
     other : DataFrame
         The right-side DataFrame to join with.
     on : str | list[str]
-        Column name(s) used as the join key.
-        - A single string is treated as a column present in both DataFrames.
-        - A list of strings is treated as multiple join keys.
-    how : str, default '"inner"'
-        Join type - any value accepted by PySpark:
-        '"inner"', '"left"', '"right"', '"outer"',
-        '"left_semi"', '"left_anti"', '"cross"', etc.
-    select : list[str] | None, default 'None'
-        Columns to pick from the **right** DataFrame (in addition to the key
-        columns which are always used for matching).  When 'None' every
-        column of 'other' is included in the result.
-    prefix : str | None, default 'None'
-        If set, all columns coming from the right DataFrame (except the join
-        keys) are prefixed with this string - handy for avoiding name
-        collisions, e.g. 'prefix="company_"' to 'company_name'.
+        Join key column name(s), present in both frames.
+    how : str, default "inner"
+        Polars join type: "inner", "left", "right", "full", "semi", "anti", "cross".
+        Polars names differ from pyspark: "outer" -> "full",
+        "left_semi" -> "semi", "left_anti" -> "anti".
+    select : list[str] | None, default None
+        Columns to keep from the right frame (join keys are always kept).
+        None keeps every column of 'other'.
+    prefix : str | None, default None
+        Prefix for the right frame's non-key columns, to avoid collisions,
+        e.g. prefix="company_" -> "company_name".
 
     Example:
-
-        from etl.transformer.steps import Join
-        
-        companies = spark.read.parquet("stg/companies")
-        transactions = spark.read.parquet("stg/transactions")
-        
-        step = Join(
-            other=companies,
-            on="company_id",
-            select=["company_name", "bin"],
-            how="left",
-        )
-        result = step.apply(transactions)
+        Join(other=companies, on="company_id", select=["company_name", "bin"], how="left")
     """
 
     def __init__(
         self,
-        other: DataFrame,
+        other: DataFrame | Pipeline,
         on: str | list[str],
         how: str = "inner",
         select: list[str] | None = None,
@@ -61,29 +42,26 @@ class Join(Step):
         self.select = select
         self.prefix = prefix
 
-    # Step interface
-    def apply(self, df: DataFrame) -> DataFrame:
-        right = self._prepare_right()
-        result = df.join(right, on=self.on, how=self.how)
-        return result
-
-    # Internal helpers
-    def _prepare_right(self) -> DataFrame:
-        """Optionally select columns and apply prefix to the right DataFrame."""
+    async def apply(self, df: DataFrame, data = None):
         right = self.other
+        
+        if isinstance(right, Pipeline):
+            right = await right.run()
 
-        # select only requested columns (+ join keys)
+        return df.join(self._prepare_right(right), on=self.on, how=self.how)
+
+
+    def _prepare_right(self, right: DataFrame) -> DataFrame:
+        """Select requested columns and prefix the right frame's non-key columns."""
+
         if self.select is not None:
             keep = list(dict.fromkeys(self.on + self.select))  # deduplicate, preserve order
-            right = right.select(*keep)
+            right = right.select(keep)
 
-        # prefix non-key columns 
         if self.prefix:
-            for col_name in right.columns:
-                if col_name not in self.on:
-                    right = right.withColumnRenamed(
-                        col_name, f"{self.prefix}{col_name}"
-                    )
+            right = right.rename(
+                {column: f"{self.prefix}{column}" for column in right.columns if column not in self.on}
+            )
 
         return right
 

@@ -1,5 +1,5 @@
-from etl.transformer.steps import Step
-from pyspark.sql import DataFrame, functions as F
+from etl.generic.step import Step
+import polars as pl
 
 
 class ClearText(Step):
@@ -14,7 +14,7 @@ class ClearText(Step):
             [2]  [Bob\\r\\nSmith] [b@m.r]
             [3]  [Charlie]        ["c@m.r"]
 
-            CleanText(columns=["name", "email"])
+            CleanText(columns=["name", "email"]) or ClearText("*")
 
             [id] [name]      [email]
             [1]  [Alice]     [a@m.r]
@@ -23,16 +23,17 @@ class ClearText(Step):
 
     """
 
-    def __init__(self, columns: list[str]):
-        super().__init__()
+    def __init__(self, columns: list[str] | None = None):
         self.columns = columns
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        for col_name in self.columns:
-            col = F.col(col_name)
-            cleaned = F.trim(F.regexp_replace(
-                F.regexp_replace(F.coalesce(col, F.lit("")), r'[\r\n]+', ' '),
-                r'[\\\"]+', ''
-            ))
-            df = df.withColumn(col_name, cleaned)
-        return df
+    async def apply(self, df: pl.DataFrame, data = None):
+        target = pl.col(pl.String) if self.columns == None else pl.col(self.columns)
+        return df.with_columns(
+            target.fill_null("")
+                  .str.replace_all(r"[\r\n]+", " ")
+                  .str.replace_all(r'[\\"]+', "")
+                  .str.strip_chars()
+        )
+
+    def __repr__(self):
+        return f"Cleartext(columns={self.columns})"

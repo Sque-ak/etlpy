@@ -1,39 +1,22 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
+from etl.generic.step import Step
+from polars import DataFrame
 
 class CastTypes(Step):
     """
-        Cast specified columns to given data types.
+    Cast specified columns to given Polars dtypes.
 
-        :param schema: Dictionary mapping column names to target data types.
-               
-               like: {"amount": "double", "date": "timestamp", "id": "integer"}
-        
-        Example:
-            
-            [id] [name]    [age]
-            [1]  [Alice]   [30]
-            [2]  [Bob]     [25]
-            [3]  [Charlie] [35]
-            
-            CastTypes(schema={'age': 'integer'}) 
-            # will cast the 'age' column to integer type.
+    schema: {column: polars dtype}, e.g. {"age": pl.Int32, "amount": pl.Float64, "date": pl.Date}
 
+    Example:
+        CastTypes({"age": pl.Int32})
     """
+
 
     def __init__(self, schema: dict[str, str]):
         self.schema = schema
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the CastTypes transformation to the DataFrame.
-
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame with specified columns cast to target data types
-        """
-        for column, dtype in self.schema.items():
-            df = df.withColumn(column, df[column].cast(dtype))
-        return df
+    async def apply(self, df: DataFrame, data = None):
+        return df.cast(self.schema)
         
     def __repr__(self) -> str:
         return f"CastTypes(schema={self.schema})"

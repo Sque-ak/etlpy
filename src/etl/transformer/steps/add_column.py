@@ -1,5 +1,5 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
+from etl.generic.step import Step
+from polars import DataFrame, lit
 
 class AddColumn(Step):
     """
@@ -23,14 +23,8 @@ class AddColumn(Step):
         self.column_name = column_name
         self.value = value
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the AddColumn transformation to the DataFrame.
-
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame with the new column added
-        """
-        return df.withColumn(self.column_name, self.value)
+    async def apply(self, df: DataFrame, data=None):
+        return df.with_columns(lit(self.value).alias(self.column_name))
         
     def __repr__(self) -> str:
         return f"AddColumn(column_name='{self.column_name}', value={self.value})"

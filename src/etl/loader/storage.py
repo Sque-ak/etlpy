@@ -1,5 +1,5 @@
 """
-Storage helpers for the Data Lake: per-layer directories and parquet files (Polars).
+Storage helpers for the Data Lake: per-layer directories and parquet files.
 
 Config comes from env vars: LAKE_DATA_DIR (base) plus optional per-layer
 overrides (RAW_DATA_DIR, REF_DATA_DIR, ...). Base defaults to /data.
@@ -90,7 +90,7 @@ def read(
     mode: Mode = Mode.DATE,
     as_arrow: bool = False,
 ) -> pl.DataFrame:
-    """Read a parquet file from a layer. as_arrow=True returns a pyarrow.Table (ClickHouse boundary)."""
+    """Read a parquet file from a layer. as_arrow=True returns a pyarrow.Table."""
     file_path = path(layer, filename, date, mode)
     if not file_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")

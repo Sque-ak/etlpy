@@ -1,37 +1,33 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
+from etl.generic.step import Step
+import polars as pl
 
 class SQL(Step):
     """
-        Apply a SQL query to the DataFrame.
+        Run a SQL query against the incoming DataFrame (Polars SQL dialect).
 
-        :param query: A string representing the SQL query to execute, using Spark SQL syntax.
-        :param view_name: Optional name for the temporary view created from the DataFrame (default is "source").
+        :param query: SQL text; reference the frame by 'view_name'.
+        :param view_name: table name the frame is registered under (default "source").
+
+        Note: Polars SQL dialect.
 
         Example:
-            
-            [id] [name]    [age]
-            [1]  [Alice]   [30]
-            [2]  [Bob]     [25]
-            [3]  [Charlie] [35]
-            
-            SQL(query='SELECT name, age FROM source WHERE age > 30') # will return a DataFrame with rows where age > 30 and only the 'name' and 'age' columns.
-
+            SQL("SELECT name, age FROM source WHERE age > 30")
+            or
+            SQL.from_file("queries/enrich.sql")
     """
 
     def __init__(self, query: str, view_name: str = "source"):
         self.query = query
         self.view_name = view_name
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the SQL transformation to the DataFrame.
+    @classmethod
+    def from_file(cls, path:str, view_name: str = "source"):
+        from pathlib import Path
+        return cls(Path(path).read_text(encoding="utf-8"), view_name)
 
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame resulting from the SQL query
-        """
-        df.createOrReplaceTempView(self.view_name)
-        return df.sparkSession.sql(self.query)
+    async def apply(self, df: pl.DataFrame, data = None):
+        return pl.SQLContext({self.view_name: df}).execute(self.query, eager=True)
+
     
     def __repr__(self) -> str:
-        return f"SQLStep(query='{self.query[:50]}...', view_name='{self.view_name}')"
+        return f"SQLStep(query='{self.query}', view_name='{self.view_name}')"

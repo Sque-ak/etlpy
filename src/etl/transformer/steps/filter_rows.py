@@ -1,33 +1,21 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
+from etl.generic.step import Step
+from polars import DataFrame
 
 class FilterRows(Step):
     """
-        Filter rows in the DataFrame based on a specified condition.
+        Keep rows matching a Polars boolean expression.
 
-        :param condition: A string representing the filter condition, using Spark SQL syntax.
-        
+        :param condition: a Polars expression, e.g. pl.col("age") > 30
+
         Example:
-            
-            [id] [name]    [age]
-            [1]  [Alice]   [30]
-            [2]  [Bob]     [25]
-            [3]  [Charlie] [35]
-            
-            FilterRows(condition='age > 30') # will keep only row 3.
-
+            FilterRows(pl.col("age") > 30)
     """
+
 
     def __init__(self, condition: str):
         self.condition = condition
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the FilterRows transformation to the DataFrame.
-
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame with rows filtered based on the condition
-        """
+    async def apply(self, df: DataFrame, data=None) -> DataFrame:
         return df.filter(self.condition)
         
     def __repr__(self) -> str:

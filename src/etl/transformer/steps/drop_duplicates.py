@@ -1,5 +1,5 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
+from etl.generic.step import Step
+from polars import DataFrame
 
 class DropDuplicates(Step):
     """
@@ -21,17 +21,9 @@ class DropDuplicates(Step):
     def __init__(self, subset: list[str] | None = None):
         self.subset = subset
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the DropDuplicates transformation to the DataFrame.
+    async def apply(self, df: DataFrame, data=None) -> DataFrame:
+        return df.unique(subset=self.subset, keep="first", maintain_order=True)
 
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame with duplicate rows dropped
-        """
-        if self.subset is not None:
-            return df.dropDuplicates(subset=self.subset)
-        else:
-            return df.dropDuplicates()
         
     def __repr__(self) -> str:
         return f"DropDuplicates(subset={self.subset})"

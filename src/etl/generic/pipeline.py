@@ -3,7 +3,6 @@ import functools
 from typing import Callable
 
 from polars import DataFrame, LazyFrame
-
 from etl.generic.context import Data
 from etl.generic.step import Step
 

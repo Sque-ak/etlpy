@@ -3,7 +3,7 @@ import asyncio
 
 from polars import DataFrame
 
-from etl.generic import storage
+from etl.loader.storage import write
 from etl.generic.context import Data
 from etl.generic.step import Step
 
@@ -15,11 +15,11 @@ class Save(Step):
         self.name = name
         self.layer = layer
 
-    async def apply(self, df: DataFrame | None, data: Data) -> DataFrame | None:
+    async def apply(self, df: DataFrame, data: Data):
         if df is None:
             return df
         await asyncio.to_thread(
-            storage.write, self.layer, df, f"{self.name}.parquet", overwrite=True
+            write, self.layer, df, f"{self.name}.parquet", overwrite=True
         )
         return df
 

@@ -1,43 +1,23 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
-from pyspark.sql.functions import trim, col
-from pyspark.sql.types import StringType
+import polars as pl
+from etl.generic.step import Step
 
 class TrimString(Step):
     """
-        Trim leading and trailing whitespace from string columns in the DataFrame.
+        Trim leading/trailing whitespace from string columns.
 
-        :param columns: Optional list of column names to trim. If None, all string columns will be trimmed.
+        :param columns: columns to trim; None = all string columns.
 
         Example:
-            
-            [id] [name]  
-            [1]  [ Alice ] 
-            [2]  [ Bob ]   
-            [3]  [ Charlie ] 
-            
-            TrimString() # will trim the whitespace from the 'name' column.
-
+            TrimString()                 # all string columns
+            TrimString(['name'])         # only 'name'
     """
 
     def __init__(self, columns: list[str] | None = None):
         self.columns = columns
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the TrimString transformation to the DataFrame.
+    async def apply(self, df: pl.DataFrame, data=None):
+        target = pl.col(self.columns) if self.columns else pl.col(pl.String)
+        return df.with_columns(target.str.strip_chars())
 
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame with string columns trimmed
-        """
-        cols = self.columns
-        if not cols:
-            cols = [f.name for f in df.schema.fields if isinstance(f.dataType, StringType)]
-
-        result = df
-        for c in cols:
-            result = result.withColumn(c, trim(col(c)))
-        return result
-    
     def __repr__(self) -> str:
         return f"TrimString(columns={self.columns})"

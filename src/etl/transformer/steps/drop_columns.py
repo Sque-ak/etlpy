@@ -1,12 +1,13 @@
-from etl.transformer.steps.step import Step
-from pyspark.sql import DataFrame
+from etl.generic.step import Step
+from polars import DataFrame
 
 class DropColumns(Step):
     """
         Drop specified columns from the DataFrame.
 
         :param columns: List of column names to drop.
-        
+        :param exclude: If true then drop exclude.
+
         Example:
             
             [id] [name]  [email]
@@ -15,20 +16,21 @@ class DropColumns(Step):
             [3]  [Charlie] [c@m.r]
             
             DropColumns(columns=['email']) # will drop the 'email' column from the DataFrame.
+            DropColumns(columns=['id', 'name'], exclude=True) # keep only id, name
 
     """
 
-    def __init__(self, columns: list[str]):
+    def __init__(self, columns: list[str], exclude: bool = False):
         self.columns = columns
+        self.exclude = exclude
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        """
-        Apply the DropColumns transformation to the DataFrame.
+    async def apply(self, df: DataFrame, data = None):
 
-        :param df: Input DataFrame to transform
-        :return: Transformed DataFrame with specified columns dropped
-        """
+        if self.exclude:
+            return df.select(self.columns)
+
         return df.drop(*self.columns)
         
     def __repr__(self) -> str:
-        return f"DropColumns(columns={self.columns})"
+        kind = "keep" if self.exclude else "columns"
+        return f"DropColumns({kind}={self.columns})"

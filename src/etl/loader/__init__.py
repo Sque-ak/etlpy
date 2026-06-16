@@ -1,3 +1,3 @@
-from etl.loader.loader import Loader
+import etl.loader.storage as Storage
 
-__all__ = ["Loader"]
+__all__ = ["Storage"]

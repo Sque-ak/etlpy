@@ -1,9 +1,10 @@
-from etl.transformer.steps import Step
-from pyspark.sql import DataFrame, functions as F
+from etl.generic.step import Step
+import polars as pl
 
 
 class ExtractEntities(Step):
     """Extract entities from multiple sets of columns and combine them using UNION.
+    Scheme the tables must be same.
 
     Parameters:
         sources:  list of mappings {target_col: source_col}
@@ -20,22 +21,23 @@ class ExtractEntities(Step):
         self.sources = sources
         self.defaults = defaults or {}
 
-    def apply(self, df: DataFrame) -> DataFrame:
-        dfs = []
-        for mapping in self.sources:
-            cols = [F.col(src).alias(tgt) for tgt, src in mapping.items()]
-            dfs.append(df.select(*cols))
+    async def apply(self, df: pl.DataFrame, data=None):
+        parts = [
+            df.select([pl.col(source).alias(target) for target, source in mapping.items()])
+            for mapping in self.sources
+        ]
+        result = pl.concat(parts, how="vertical")
 
-        result = dfs[0]
-        for d in dfs[1:]:
-            result = result.union(d)
-
+        exprs = []
         for col_name, default in self.defaults.items():
-            condition = F.col(col_name).isNull()
+            col = pl.col(col_name)
+            blank = col.is_null()
             if isinstance(default, str):
-                condition = condition | (F.trim(F.col(col_name)) == "")
-            result = result.withColumn(
-                col_name,
-                F.when(condition, F.lit(default)).otherwise(F.col(col_name)),
-            )
+                blank = blank | (col.cast(pl.String).str.strip_chars() == "") # null OR blank string
+            exprs.append(pl.when(blank).then(pl.lit(default)).otherwise(col).alias(col_name))
+        if exprs:
+            result = result.with_columns(exprs)
         return result
+
+    def __repr__(self):
+        return f"ExtractEntities(sources={self.sources}, defaults={self.defaults})"
