@@ -49,23 +49,22 @@ A pipeline threads a Polars `DataFrame` through a list of steps:
 
 ```python
 import asyncio
-from etl.generic import Pipeline
+from etl.generic import Pipeline, Pipestart
 from etl.transformer.steps import ClearText, DropDuplicates, GenerateKey, RowHash
 from etl.loader.steps.datalake import Save
 
-
-async def main(raw_df):
-    pipe = Pipeline([
+@Pipestart
+async def clean_customers(raw_df):
+    return Pipeline([
         ClearText("*"),                        # strip junk from every text column
         DropDuplicates(),
         GenerateKey(columns=["id"], key_name="pk"),
         RowHash(),                             # content fingerprint for change detection
         Save(name="customers", layer="raw"),   # persist to the data lake
     ], dataframe=raw_df)
-    return await pipe.run()
 
 
-asyncio.run(main(raw_df))
+asyncio.run(clean_customers(raw_df))
 ```
 
 Load a lake file into ClickHouse, inserting only what actually changed:
@@ -74,6 +73,7 @@ Load a lake file into ClickHouse, inserting only what actually changed:
 from etl.generic import Pipeline
 from etl.extractor.steps.datalake import Read
 from etl.loader.steps.clickhouse import Connect, EnsureTable, Delta, Insert
+from etl.loader.steps.datalake import Archive
 
 await Pipeline([
     Connect(host="clickhouse", database="analytics"),
@@ -82,6 +82,7 @@ await Pipeline([
                 engine="ReplacingMergeTree(_loaded_at)", order_by=["pk"]),
     Delta("fact_transactions", keys=["pk"]),   # skip rows already loaded unchanged
     Insert("fact_transactions"),
+    Archive(layer="fact", name="transactions"),
 ]).run()
 ```
 
