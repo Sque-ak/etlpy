@@ -56,7 +56,7 @@ from etl.loader.steps.datalake import Save
 @Pipestart
 async def clean_customers(raw_df):
     return Pipeline([
-        ClearText("*"),                        # strip junk from every text column
+        ClearText(),
         DropDuplicates(),
         GenerateKey(columns=["id"], key_name="pk"),
         RowHash(),                             # content fingerprint for change detection
