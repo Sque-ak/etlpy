@@ -50,6 +50,7 @@ class Authenticate(Step):
             send="json",
             method="POST",
             auth_header=None,
+            headers=None,
             store="auth"
     ):
         self.url = url
@@ -57,13 +58,25 @@ class Authenticate(Step):
         self.fields = fields or AuthFields()
         self.send = send
         self.method = method
-        self.auth_header = auth_header
+        self.headers=headers or {"Content-Type": "application/json"}
+        self.auth_header = auth_header or {"Authorization": "Bearer {token}"}
+        # auth header for client it can be:
+        # {"X-Auth-Token": "{token}"}
+        # {"Authorization": "{token}"}
+        # for headers to https/http response use headers.
         self.store = store
 
     async def apply(self, df, data: Data):
         client = data.get("client") or httpx.AsyncClient()
-        response = await client.request(self.method, self.url, **{self.send:self.credentials})
-        response.raise_for_status()
+        response = await client.request(self.method, self.url, headers=self.headers, **{self.send:self.credentials})
+        
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise httpx.HTTPStatusError(
+                f"{error}\nResponse body: {response.text}",
+                request=error.request, response=error.response
+            ) from error
 
         body = response.json()
         auth = {}
