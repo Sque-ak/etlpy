@@ -176,7 +176,10 @@ def archive_file(
     shutil.move(str(source), str(dest))
 
     if source.parent.exists() and not any(source.parent.iterdir()):
-        source.parent.rmdir()
+        try:
+            source.parent.rmdir()
+        except OSError:                # AirFlow can run more dags, and all dags check file exist, but only one can remove.
+            pass                       # its path must fix it.
     return dest
 
 
