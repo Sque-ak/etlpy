@@ -33,6 +33,9 @@ class Pipeline:
     async def run(self, verbose: bool = False) -> DataFrame | LazyFrame | None:
         for i, step in enumerate(self.steps):
 
+            if verbose:
+                print(f" [{i + 1}/{len(self.steps)}] {step!r}")
+                
             try:
                 self.dataframe = await step.apply(self.dataframe, self.data)
             except StopPipeline as stop:
@@ -42,9 +45,6 @@ class Pipeline:
             except Exception as error:
                 error.add_note(f"Pipeline failed at step [{i + 1}/{len(self.steps)}] - {step!r}")
                 raise                       
-
-            if verbose:
-                print(f" [{i + 1}/{len(self.steps)}] {step!r}")
         
         return self.dataframe
     
