@@ -1,6 +1,6 @@
 import polars as pl, pytest
 
-from etl.generic import Pipeline, Pipestart, Data, Step
+from etl.generic import Pipeline, Pipestart, Data, Step, StopPipeline
 from etl.transformer.steps import DropDuplicates, ExtractEntities, ClearText, RenameColumns, \
                                     Join, Aggregate, Lambda, SQL, GenerateKey, RowHash
 
@@ -8,6 +8,45 @@ from etl.loader.steps.datalake import Save
 from etl.extractor.steps.datalake import Read
 
 from etl.loader.steps.clickhouse import Connect, EnsureTable, Insert
+
+class _Stop(Step):
+    def __init__(self, df=None):
+        self.df = df
+    async def apply(self, df, data=None):
+        raise StopPipeline("halt", df=self.df)
+
+class _MarkRan(Step):
+    async def apply(self, df, data=None):
+        return df.with_columns(pl.lit(True).alias("ran"))
+
+async def test_stop_returns_current_df():
+    start = pl.DataFrame({"a": [1]})
+    out = await Pipeline([_Stop(), _MarkRan()], dataframe=start).run()
+    assert out.equals(start)              
+    assert "ran" not in out.columns      
+
+
+async def test_stop_with_payload():
+    payload = pl.DataFrame({"b": [9]})
+    out = await Pipeline([_Stop(df=payload), _MarkRan()],
+                         dataframe=pl.DataFrame({"a": [1]})).run()
+    assert out.equals(payload)            
+
+
+async def test_stop_verbose(capsys):
+    await Pipeline([_Stop()], dataframe=pl.DataFrame({"a": [1]})).run(verbose=True)
+    assert "[stop]" in capsys.readouterr().out
+
+
+class _Boom(Step):
+    async def apply(self, df, data=None):
+        raise ValueError("boom")
+
+async def test_step_error_keeps_type():
+    with pytest.raises(ValueError) as exc:
+        await Pipeline([_Boom()], dataframe=pl.DataFrame({"a": [1]})).run()
+    assert any("failed at step" in note for note in exc.value.__notes__)
+
 
 class _Add(Step):
     async def apply(self, df, data=None):

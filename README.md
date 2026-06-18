@@ -86,14 +86,35 @@ await Pipeline([
 ]).run()
 ```
 
+Any step can halt the pipeline gracefully by raising `StopPipeline`. It is a
+control-flow signal, not an error: `run()` stops, skips the remaining steps and
+returns the data produced so far (no traceback).
+
+```python
+from etl.generic import Step, StopPipeline
+
+class StopIfEmpty(Step):
+    async def apply(self, df, data=None):
+        if df is None or df.is_empty():
+            raise StopPipeline("no rows")          # stop, return df as-is
+        return df
+```
+
+Pass `df=` to control what the pipeline returns on stop:
+
+```python
+raise StopPipeline("threshold hit", df=partial)
+```
+
 ## Core concepts
 
-| Piece           | What it is                                                                                                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`Pipeline`**  | An ordered list of steps. `run()` threads a DataFrame through them and returns the final one.                                                                                   |
-| **`Pipestart`** | A decorator that runs a pipeline-returning function.                                                                                                                            |
-| **`Step`**      | A unit of work: `async def apply(self, df, data) -> df`. Write your own by subclassing.                                                                                         |
-| **`Data`**      | A shared context (auth tokens, DB clients, config) passed to every step. Mutated by reference; **DataFrames don't live here** - they flow as the threaded `df` or via the lake. |
+| Piece              | What it is                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`Pipeline`**     | An ordered list of steps. `run()` threads a DataFrame through them and returns the final one.                                                                                   |
+| **`StopPipeline`** | A step may raise StopPipeline to halt the run early                                                                                                                             |
+| **`Pipestart`**    | A decorator that runs a pipeline-returning function.                                                                                                                            |
+| **`Step`**         | A unit of work: `async def apply(self, df, data) -> df`. Write your own by subclassing.                                                                                         |
+| **`Data`**         | A shared context (auth tokens, DB clients, config) passed to every step. Mutated by reference; **DataFrames don't live here** - they flow as the threaded `df` or via the lake. |
 
 The split is deliberate: the **`DataFrame`** is threaded and returned, while the **`Data`** context is
 shared state. Heavy tables move through the data lake, not through the context - which keeps each

@@ -1,5 +1,5 @@
 from etl.generic.pipeline import Pipeline, Pipestart
 from etl.generic.context import Data
-from etl.generic.step import Step
+from etl.generic.step import Step, StopPipeline
 
-__all__ = ["Step", "Data", "Pipeline", "Pipestart"]
+__all__ = ["Step", "Data", "Pipeline", "Pipestart", "StopPipeline"]

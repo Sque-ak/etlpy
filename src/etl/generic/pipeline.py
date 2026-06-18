@@ -4,7 +4,7 @@ from typing import Callable
 
 from polars import DataFrame, LazyFrame
 from etl.generic.context import Data
-from etl.generic.step import Step
+from etl.generic.step import Step, StopPipeline
 
 
 class Pipeline:
@@ -32,8 +32,17 @@ class Pipeline:
     
     async def run(self, verbose: bool = False) -> DataFrame | LazyFrame | None:
         for i, step in enumerate(self.steps):
-            self.dataframe = await step.apply(self.dataframe, self.data)
-            
+
+            try:
+                self.dataframe = await step.apply(self.dataframe, self.data)
+            except StopPipeline as stop:
+                if verbose:
+                    print(f" [stop] {step!r}: {stop}")
+                return stop.df if stop.df is not None else self.dataframe
+            except Exception as error:
+                error.add_note(f"Pipeline failed at step [{i + 1}/{len(self.steps)}] - {step!r}")
+                raise                       
+
             if verbose:
                 print(f" [{i + 1}/{len(self.steps)}] {step!r}")
         
