@@ -79,7 +79,7 @@ await Pipeline([
     Connect(host="clickhouse", database="analytics"),
     Read(layer="fact", name="transactions"),
     EnsureTable("fact_transactions",
-                engine="ReplacingMergeTree(_loaded_at)", order_by=["pk"]),
+                engine="ReplacingMergeTree(loaded_at)", order_by=["pk"]),
     Delta("fact_transactions", keys=["pk"]),   # skip rows already loaded unchanged
     Insert("fact_transactions"),
     Archive(layer="fact", name="transactions"),
@@ -145,7 +145,7 @@ Missing one? Subclass `Step`, implement `apply`, and drop it into the list.
 - **`ClearText(columns="*")`** - clean text: collapse newlines to spaces, drop quotes/backslashes, trim.
 - **`NormalizeNumeric(columns, method="minmax")`** - scale numeric columns (`"minmax"` or `"zscore"`).
 - **`GenerateKey(columns, key_name="pk", mode="hash")`** - build a key column. `mode`: `"hash"` (SHA-256 hex), `"hash_int"` (stable 64-bit int), `"sequential"` (1, 2, 3, ...).
-- **`RowHash(exclude=None, separator="||")`** - SHA-256 fingerprint of every row value (minus `row_hash`, `_loaded_at`, and `exclude`) written to `row_hash`, for change detection.
+- **`RowHash(exclude=None, separator="||")`** - SHA-256 fingerprint of every row value (minus `row_hash`, `loaded_at`, and `exclude`) written to `row_hash`, for change detection.
 - **`Aggregate(group_by, aggregations)`** - group + aggregate, e.g. `{"amount": ["sum", "mean"]}`; output columns are `{column}_{func}`.
 - **`Join(other, on, how="inner", select=None, prefix=None)`** - join with another frame **or a sub-`Pipeline`** (run to produce the right side); `select` / `prefix` shape the right columns.
 - **`ExtractEntities(sources, defaults=None)`** - stack several column groups into one long table (e.g. sender/receiver columns into a single `party` table).

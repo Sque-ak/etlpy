@@ -6,13 +6,13 @@ class RowHash(Step):
     SHA-256 fingerprint of all row values, written to 'row_hash'.
     Used by the loader to insert only new/changed rows.
 
-    Excludes 'row_hash', '_loaded_at', and any columns in 'exclude'.
+    Excludes 'row_hash', 'loaded_at', and any columns in 'exclude'.
 
     Example:
-        Pipeline([..., RowHash(), AddColumn("_loaded_at", pl.lit(datetime.now()))])
+        Pipeline([..., RowHash(), AddColumn("loaded_at", pl.lit(datetime.now()))])
     """
 
-    _META = frozenset({"row_hash", "_loaded_at"})
+    _META = frozenset({"row_hash", "loaded_at"})
 
     def __init__(self, exclude: list[str] | None = None, separator: str = "||") -> None:
         self.exclude = set(exclude or [])
