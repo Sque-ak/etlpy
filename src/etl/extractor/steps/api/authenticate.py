@@ -51,7 +51,8 @@ class Authenticate(Step):
             method="POST",
             auth_header=None,
             headers=None,
-            store="auth"
+            store="auth",
+            timeout=60.0
     ):
         self.url = url
         self.credentials = credentials
@@ -65,9 +66,10 @@ class Authenticate(Step):
         # {"Authorization": "{token}"}
         # for headers to https/http response use headers.
         self.store = store
+        self.timeout = timeout
 
     async def apply(self, df, data: Data):
-        client = data.get("client") or httpx.AsyncClient()
+        client = data.get("client") or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout))
         response = await client.request(self.method, self.url, headers=self.headers, **{self.send:self.credentials})
         
         try:
