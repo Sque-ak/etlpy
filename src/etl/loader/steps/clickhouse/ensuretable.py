@@ -15,14 +15,16 @@ class EnsureTable(Step):
         :param engine: ClickHouse engine (default "MergeTree" see https://clickhouse.com/docs/engines/table-engines/mergetree-family/mergetree)
         :param partition_by: optional PARTITION BY expression.
         :param if_exists: "append"/"replace" -> create if missing; "error" -> raise if exists.
+        :param not_null: not nullable columns
     """
 
-    def __init__(self, table, order_by, engine="MergeTree", partition_by=None, if_exists="append"):
+    def __init__(self, table, order_by, engine="MergeTree", partition_by=None, if_exists="append", not_null=None):
         self.table = table
         self.engine = engine
         self.order_by = order_by
         self.partition_by = partition_by
         self.if_exists = if_exists
+        self.not_null = set(not_null or [])
 
     def _arrow_to_ch(self, t: pa.DataType) -> str:
         """Map a PyArrow type to a ClickHouse type string."""
@@ -57,7 +59,7 @@ class EnsureTable(Step):
         return df
     
     def _build_ddl(self, schema: pa.Schema) -> str:
-        non_nullable = set(self.order_by) | {"row_hash"}
+        non_nullable = set(self.order_by) | {"row_hash"} | self.not_null
         version = re.search(r"ReplacingMergeTree\((\w+)\)", self.engine)
         if version:
             non_nullable.add(version.group(1))
