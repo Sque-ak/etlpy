@@ -65,7 +65,7 @@ class EnsureTable(Step):
         columns = []
         for f in schema:
             ch_type = self._arrow_to_ch(f.type)
-            if f.nullable and ch_type != "String" and f.name not in non_nullable:
+            if f.nullable and f.name not in non_nullable:
                 ch_type = f"Nullable({ch_type})"
             columns.append(f"    `{f.name}` {ch_type}")
 

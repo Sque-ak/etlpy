@@ -104,7 +104,8 @@ def test_ensuretable_replacing_version():
     ddl = EnsureTable("t", order_by=["pk"], engine="ReplacingMergeTree(v)")._build_ddl(df.to_arrow().schema)
     assert "`v` Int64" in ddl and "Nullable(Int64)" not in ddl   # v is non_nullable
 
-def test_ensuretable_fallback_type():
-    df = pl.DataFrame(schema={"tm": pl.Time, "pk": pl.Int64})
+def test_ensuretable_nullable_string():
+    df = pl.DataFrame(schema={"doc": pl.String, "pk": pl.Int64})
     ddl = EnsureTable("t", order_by=["pk"])._build_ddl(df.to_arrow().schema)
-    assert "`tm` String" in ddl
+    assert "`doc` Nullable(String)" in ddl  
+    assert "`pk` Int64" in ddl               

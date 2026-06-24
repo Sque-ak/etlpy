@@ -8,6 +8,7 @@ class Union(Step):
     Union the incoming DataFrame (left) with another DataFrame (right).
 
         :param other: pipeline or dataframe with we want union 
+        :param how: Specify the stacking strategy using the how parameter (e.g., how="vertical", how="diagonal", or how="horizontal") depending on your schema alignment
 
     Example:
         Union(other=companies)
@@ -16,8 +17,9 @@ class Union(Step):
     def __init__(
         self,
         other: pl.DataFrame | Pipeline,
+        how: str | None = "vertical"
     ) -> None:
-        self.other = other
+        self.other, self.how = other, how
 
     async def apply(self, df: pl.DataFrame, data = None):
         right = self.other
@@ -25,7 +27,7 @@ class Union(Step):
         if isinstance(right, Pipeline):
             right = await right.run()
 
-        return pl.concat([df, right])
+        return pl.concat([df, right], how=self.how)
 
 
     def __repr__(self) -> str:
