@@ -1,8 +1,6 @@
 import pytest, pyarrow as pa, polars as pl
 from etl.generic import Pipeline
-
-from etl.loader.steps.clickhouse import Connect
-from etl.extractor.steps.clickhouse import Read
+from etl.extractor.steps.clickhouse import Read,Connect
 
 import os
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")

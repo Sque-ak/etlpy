@@ -12,7 +12,7 @@ class Pipeline:
     Chain of async steps.
 
     Example: 
-        pipe = Pipeline([Authenticate(api), GetAccounts(), GetTransactions()])
+        pipe = Pipeline([OAuthenticate(api), GetAccounts(), GetTransactions()])
         data = await pipe.run()
     """
 

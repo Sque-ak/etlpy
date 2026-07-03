@@ -28,6 +28,7 @@ class Archive(Step):
                 print(f" [archive] file not found, returning empty df: {self.layer}/{self.name}.parquet")
                 return df
             raise StopPipeline(message="The file wasn't found.")
+        return df
     
     def __repr__(self) -> str:
         return f"Archive(layer={self.layer}, name={self.name!r})"

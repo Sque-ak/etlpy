@@ -1,3 +1,4 @@
-from etl.extractor.steps.api.authenticate import Authenticate, AuthFields
+from etl.extractor.steps.api.oauthenticate import OAuthenticate, OAuthFields
+from etl.extractor.steps.api.basic_authenticate import AuthenticateBasic
 
-__all__ = ["Authenticate", "AuthFields"]
+__all__ = ["OAuthenticate", "OAuthFields", "AuthenticateBasic"]

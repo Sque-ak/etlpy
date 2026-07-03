@@ -72,7 +72,8 @@ Load a lake file into ClickHouse, inserting only what actually changed:
 ```python
 from etl.generic import Pipeline
 from etl.extractor.steps.datalake import Read
-from etl.loader.steps.clickhouse import Connect, EnsureTable, Delta, Insert
+from etl.loader.steps.clickhouse import EnsureTable, Delta, Insert
+from etl.extractor.steps.clickhouse import Connect
 from etl.loader.steps.datalake import Archive
 
 await Pipeline([
@@ -127,9 +128,15 @@ Missing one? Subclass `Step`, implement `apply`, and drop it into the list.
 
 ### Extract
 
-- **`Authenticate(url, credentials, fields=AuthFields(...), send="json", auth_header=None, store="auth")`** - generic OAuth 2.0 token endpoint (client-credentials): sends credentials, pulls the token out of the JSON response by dotted paths (`fields`), sets the auth header on the shared httpx client, and stores the parsed auth in `data["auth"]`.
+- **`OAuthenticate(url, credentials, fields=OAuthFields(...), send="json", method="POST", auth_header=None, headers=None, store="auth", timeout=60.0)`** - non-interactive OAuth 2.0 token flow (client-credentials). Sends `credentials` (JSON or form via `send`), pulls the token out of the response by dotted paths (`fields`), applies `auth_header` (e.g. `{"Authorization": "Bearer {token}"}`, `{token}` is filled in) to the shared httpx client, and stores the parsed auth in `data["auth"]`. Request-level headers (gateway API keys, `Content-Type`) go in `headers`.
+- **`AuthenticateBasic(user, password, headers=None, timeout=60.0)`** _(HTTP Basic, RFC 7617)_ - sets `httpx.BasicAuth(user, password)` on the shared client so every downstream request carries `Authorization: Basic ...`. No token exchange - the header is static.
 - **`Read(layer, name)`** _(data lake)_ - read `{name}.parquet` from a lake layer into the pipeline df.
 - **`Read(query)`** _(ClickHouse)_ - run a SQL query (client from `data["ch"]`) and return the result as a Polars frame.
+- **`Connect(host, port=8123, database, username, password, secure=False)`** _(ClickHouse)_ - open a clickhouse-connect client (extra kwargs are forwarded) and store it in `data["ch"]`.
+
+> **`OAuthFields`** maps where each token-response field lives, e.g.
+> `OAuthFields(access_token="data.access_token", expires_in="data.expires_in")`.
+> Set a field to `None` if the API does not return it.
 
 ### Transform
 
@@ -154,7 +161,6 @@ Missing one? Subclass `Step`, implement `apply`, and drop it into the list.
 
 ### Load
 
-- **`Connect(host, port=8123, database, username, password, secure=False)`** _(ClickHouse)_ - open a clickhouse-connect client (extra kwargs are forwarded) and store it in `data["ch"]`.
 - **`EnsureTable(table, order_by, engine="MergeTree", partition_by=None, if_exists="append")`** - create `table` from the df schema if it does not exist. `order_by` is required (it is the primary / dedup key); `if_exists="error"` raises when the table already exists.
 - **`Delta(table, keys)`** - keep only new or changed rows by comparing `row_hash` against the table (needs a `ReplacingMergeTree`-family engine). The core of idempotent loads.
 - **`Insert(table)`** - insert the df into a ClickHouse table via Arrow (an empty / `None` frame is skipped).

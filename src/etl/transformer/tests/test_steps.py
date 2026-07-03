@@ -18,6 +18,7 @@ from etl.transformer.steps.normalize_numeric import NormalizeNumeric
 from etl.transformer.steps.aggregate import Aggregate
 from etl.transformer.steps.join import Join
 from etl.transformer.steps.extract_entities import ExtractEntities
+from etl.transformer.steps import Union
 
 
 async def _apply(step, df):
@@ -159,3 +160,15 @@ async def test_aggregate_unknown():
 async def test_fill_nulls_all_columns():
     out = await _apply(FillNulls(0), pl.DataFrame({"a": [None], "b": [None]}))
     assert out.row(0) == (0, 0)
+
+async def test_union_dataframes():            
+    out = await Union(other=pl.DataFrame({"a": [2]})).apply(pl.DataFrame({"a": [1]}), Data())
+    assert out["a"].to_list() == [1, 2]
+
+async def test_union_with_pipeline():                   
+    branch = Pipeline([], dataframe=pl.DataFrame({"a": [2]}))
+    out = await Union(other=branch).apply(pl.DataFrame({"a": [1]}), Data())
+    assert out["a"].to_list() == [1, 2]
+
+def test_union_repr():                        
+    assert repr(Union(other=pl.DataFrame())) == "Union()"

@@ -6,14 +6,14 @@ from etl.generic.step import Step
 from etl.generic.context import Data
 
 @dataclass
-class AuthFields:
+class OAuthFields:
     """
     Map fields with the Authenticate step can works.
 
     Where each OAuth 2.0 token-response field lives (RFC 6749 section 5.1).
     Value = dotted path in th response; None = The API does not return it.
 
-    AuthFields(
+    OAuthFields(
         access_token="data.access_token",
         expires_in="data.expires_in",
         refresh_token="data.refresh_token",
@@ -26,7 +26,7 @@ class AuthFields:
     scope: str | None = None
 
 
-class Authenticate(Step):
+class OAuthenticate(Step):
     """
     Generic API auth: send credentials, extract  a token, configure the shared
     client and stash the auth in data.
@@ -46,7 +46,7 @@ class Authenticate(Step):
             self,
             url: str,
             credentials: dict,
-            fields: AuthFields = None, 
+            fields: OAuthFields = None, 
             send="json",
             method="POST",
             auth_header=None,
@@ -56,7 +56,7 @@ class Authenticate(Step):
     ):
         self.url = url
         self.credentials = credentials
-        self.fields = fields or AuthFields()
+        self.fields = fields or OAuthFields()
         self.send = send
         self.method = method
         self.headers=headers or {"Content-Type": "application/json"}

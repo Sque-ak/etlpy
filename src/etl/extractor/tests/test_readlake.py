@@ -18,8 +18,14 @@ async def test_read_roundtrip(tmp_path, monkeypatch):
 
     assert out.equals(df)
 
-async def test_read_missing_file_raises(tmp_path, monkeypatch):
+async def test_read_missing_file_stops(tmp_path, monkeypatch):
     monkeypatch.setenv("LAKE_DATA_DIR", str(tmp_path))
-    with pytest.raises(FileNotFoundError):
-        await Pipeline([Read(layer=Storage.Layer.RAW, name="nope")]).run()
+    out = await Pipeline([Read(layer=Storage.Layer.RAW, name="nope")]).run()
+    assert out is None            
+
+async def test_read_missing_ok_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAKE_DATA_DIR", str(tmp_path))
+    out = await Read(layer=Storage.Layer.RAW, name="nope", missing_ok=True).apply(None, Data())
+    assert out.is_empty()
+
 

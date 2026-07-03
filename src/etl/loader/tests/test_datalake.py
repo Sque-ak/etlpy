@@ -1,5 +1,7 @@
 import polars as pl, pyarrow as pa, pytest
 from etl.loader import Storage
+from etl.generic import Data, StopPipeline
+from etl.loader.steps.datalake import Archive
 
 L = Storage.Layer
 M = Storage.Mode
@@ -109,3 +111,33 @@ def test_list_files_star_missing(tmp_path, monkeypatch):
 def test_list_dates_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("LAKE_DATA_DIR", str(tmp_path))
     assert Storage.list_dates(Storage.Layer.STG) == []
+
+async def test_archive_passes_df_through(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAKE_DATA_DIR", str(tmp_path))
+    Storage.write(Storage.Layer.RAW, pl.DataFrame({"a": [1]}), "x.parquet")
+    df = pl.DataFrame({"a": [1]})
+    out = await Archive(layer=Storage.Layer.RAW, name="x").apply(df, Data())
+    assert out.equals(df)
+
+# archive.py:27-29: FileNotFoundError + missing_ok -> df
+async def test_archive_missing_ok(monkeypatch):
+    def boom(*a, **k): raise FileNotFoundError
+    monkeypatch.setattr("etl.loader.steps.datalake.archive.archive_file", boom)
+    df = pl.DataFrame({"a": [1]})
+    out = await Archive(layer="raw", name="x", missing_ok=True).apply(df, Data())
+    assert out.equals(df)
+
+# archive.py:30: FileNotFoundError + not missing_ok -> StopPipeline
+async def test_archive_missing_stops(monkeypatch):
+    def boom(*a, **k): raise FileNotFoundError
+    monkeypatch.setattr("etl.loader.steps.datalake.archive.archive_file", boom)
+    with pytest.raises(StopPipeline):
+        await Archive(layer="raw", name="x", missing_ok=False).apply(pl.DataFrame({"a": [1]}), Data())
+
+# storage.py:181-182: rmdir catch OSError (concurrent dags)
+def test_archive_file_rmdir_race(tmp_path, monkeypatch):
+    from pathlib import Path
+    monkeypatch.setenv("LAKE_DATA_DIR", str(tmp_path))
+    Storage.write(Storage.Layer.RAW, pl.DataFrame({"a": [1]}), "x.parquet")
+    monkeypatch.setattr(Path, "rmdir", lambda self: (_ for _ in ()).throw(OSError("race")))
+    Storage.archive_file(Storage.Layer.RAW, "x.parquet")   

@@ -6,11 +6,12 @@ from etl.transformer.steps import (
     FillNulls, FilterRows, TrimString, ClearText, NormalizeNumeric, GenerateKey,
     RowHash, Aggregate, Join, ExtractEntities, SQL, Lambda,
 )
-from etl.loader.steps.clickhouse import Connect, EnsureTable, Delta, Insert
+from etl.extractor.steps.clickhouse import Connect
+from etl.loader.steps.clickhouse import EnsureTable, Delta, Insert
 from etl.loader.steps.datalake import Save, Archive
 from etl.extractor.steps.datalake import Read as ReadLake
 from etl.extractor.steps.clickhouse.read import Read as ReadCH
-from etl.extractor.steps.api.authenticate import Authenticate
+from etl.extractor.steps.api.oauthenticate import OAuthenticate
 
 
 STEPS = [
@@ -40,7 +41,7 @@ STEPS = [
     Archive(layer="raw", name="x"),
     ReadLake(layer="raw", name="x"),
     ReadCH("SELECT 1"),
-    Authenticate(url="u", credentials={}),
+    OAuthenticate(url="u", credentials={}),
 ]
 
 

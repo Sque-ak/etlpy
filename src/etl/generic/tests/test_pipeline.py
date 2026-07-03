@@ -6,8 +6,8 @@ from etl.transformer.steps import DropDuplicates, ExtractEntities, ClearText, Re
 
 from etl.loader.steps.datalake import Save
 from etl.extractor.steps.datalake import Read
-
-from etl.loader.steps.clickhouse import Connect, EnsureTable, Insert
+from etl.extractor.steps.clickhouse import Connect
+from etl.loader.steps.clickhouse import EnsureTable, Insert
 
 class _Stop(Step):
     def __init__(self, df=None):

@@ -2,7 +2,8 @@ import pytest
 from etl.generic import Pipeline, Data
 from etl.loader import Storage
 from etl.loader.steps.datalake import Save, Archive
-from etl.loader.steps.clickhouse import Connect, EnsureTable, Delta, Insert
+from etl.loader.steps.clickhouse import EnsureTable, Delta, Insert
+from etl.extractor.steps.clickhouse import Connect
 from etl.extractor.steps.datalake import Read
 from etl.transformer.steps import GenerateKey, RowHash
 from polars import DataFrame
@@ -109,3 +110,8 @@ def test_ensuretable_nullable_string():
     ddl = EnsureTable("t", order_by=["pk"])._build_ddl(df.to_arrow().schema)
     assert "`doc` Nullable(String)" in ddl  
     assert "`pk` Int64" in ddl               
+
+def test_ensuretable_fallback_type():
+    df = pl.DataFrame(schema={"tm": pl.Time, "pk": pl.Int64})  
+    ddl = EnsureTable("t", order_by=["pk"])._build_ddl(df.to_arrow().schema)
+    assert "`tm` Nullable(String)" in ddl
