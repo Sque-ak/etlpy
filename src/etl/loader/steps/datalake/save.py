@@ -5,7 +5,7 @@ from polars import DataFrame
 
 from etl.loader.storage import write, Mode, Layer
 from etl.generic.context import Data
-from etl.generic.step import Step
+from etl.generic.step import Step, StopPipeline
 
 
 class Save(Step):
@@ -16,14 +16,21 @@ class Save(Step):
     :param layer: target lake layer (e.g. Storage.Layer.RAW).
     :param date: date partition to write into; None = today (pass Airflow's ds for backfills).
     :param mode: mode of save, like static file or date file.
+    :param missing_ok: if df hasn't exist - safe stop pipeline or error.
     """
 
-    def __init__(self, name: str, layer: Layer = "raw", date: str | None = None, mode: Mode | None = None):
-        self.layer, self.name, self.date, self.mode = layer, name, date, mode
+    def __init__(self, name: str, layer: Layer = "raw", date: str | None = None, mode: Mode | None = None, missing_ok: bool = False):
+        self.layer, self.name, self.date, self.mode, self.missing_ok = layer, name, date, mode, missing_ok
 
     async def apply(self, df: DataFrame, data: Data):
+
         if df is None:
-            return df
+            if self.missing_ok == True:
+                raise StopPipeline(message="dataframe is None")
+            else:
+                raise ValueError(f"dataframe is None")
+        
+        
         await asyncio.to_thread(write, self.layer, df, f"{self.name}.parquet", self.date, mode=self.mode, overwrite=True)
         return df
 
