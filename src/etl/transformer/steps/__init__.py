@@ -17,6 +17,7 @@ from etl.transformer.steps.row_hash import RowHash
 from etl.transformer.steps.extract_entities import ExtractEntities
 from etl.transformer.steps.clear_text import ClearText
 from etl.transformer.steps.union import Union
+from etl.transformer.steps.to_schema import ToSchema
 
 __all__ = [
     "Union",
@@ -38,4 +39,5 @@ __all__ = [
     "RowHash",
     "ExtractEntities",
     "ClearText",
+    "ToSchema",
 ]

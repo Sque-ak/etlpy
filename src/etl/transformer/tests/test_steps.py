@@ -1,5 +1,6 @@
 import polars as pl, pytest
-from etl.generic import Data, Pipeline
+from pydantic import BaseModel
+from etl.generic import Data, Pipeline, StopPipeline
 from etl.transformer.steps.add_column import AddColumn
 from etl.transformer.steps.cast_types import CastTypes
 from etl.transformer.steps.clear_text import ClearText
@@ -19,7 +20,7 @@ from etl.transformer.steps.aggregate import Aggregate
 from etl.transformer.steps.join import Join
 from etl.transformer.steps.extract_entities import ExtractEntities
 from etl.transformer.steps import Union
-
+from etl.transformer.steps import ToSchema
 
 async def _apply(step, df):
     return await step.apply(df, Data())  
@@ -172,3 +173,33 @@ async def test_union_with_pipeline():
 
 def test_union_repr():                        
     assert repr(Union(other=pl.DataFrame())) == "Union()"
+
+class _Txn(BaseModel):
+    id: int
+    name: str
+    amount: float | None = None
+
+async def test_toschema_validates_and_types():
+    df = pl.DataFrame({"id": ["1"], "name": ["x"], "extra": ["drop"]})   # id str->int, extra exclude
+    out = await ToSchema(_Txn).apply(df, Data())
+    assert out.schema == {"id": pl.Int64, "name": pl.String, "amount": pl.Float64}
+    assert out["id"].to_list() == [1]
+    assert "extra" not in out.columns
+
+async def test_toschema_mapping():
+    out = await ToSchema(_Txn, mapping={"txn_id": "id"}).apply(pl.DataFrame({"txn_id": [1], "name": ["x"]}), Data())
+    assert out["id"].to_list() == [1]
+
+async def test_toschema_empty_stops():
+    with pytest.raises(StopPipeline):
+        await ToSchema(_Txn).apply(pl.DataFrame(), Data())
+
+def test_toschema_repr():
+    assert repr(ToSchema(_Txn))
+
+async def test_toschema_list_field():
+    from pydantic import BaseModel
+    class _M(BaseModel):
+        tags: list[str] | None = None
+    out = await ToSchema(_M).apply(pl.DataFrame({"tags": [["a", "b"]]}), Data())
+    assert out.schema["tags"] == pl.List(pl.String)

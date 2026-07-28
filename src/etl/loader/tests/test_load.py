@@ -1,11 +1,12 @@
 import pytest
-from etl.generic import Pipeline, Data
+from etl.generic import Pipeline, Data, StopPipeline
 from etl.loader import Storage
 from etl.loader.steps.datalake import Save, Archive
 from etl.loader.steps.clickhouse import EnsureTable, Delta, Insert
 from etl.extractor.steps.clickhouse import Connect
 from etl.extractor.steps.datalake import Read
 from etl.transformer.steps import GenerateKey, RowHash
+from etl.loader.steps.clickhouse import Optimize
 from polars import DataFrame
 import polars as pl
 
@@ -85,8 +86,13 @@ async def test_delta_table_absent():
     out = await Delta("t", keys=["pk"]).apply(df, Data(ch=_FakeCH(exists=0)))
     assert out.height == 1                                  # no table -> all new
 
-async def test_save_skips_none():
-    assert await Save(name="x").apply(None, Data()) is None
+async def test_save_none_raises():
+    with pytest.raises(ValueError):
+        await Save(name="x").apply(None, Data())                    # default -> ValueError
+
+async def test_save_none_missing_ok_stops():
+    with pytest.raises(StopPipeline):
+        await Save(name="x", missing_ok=True).apply(None, Data())   # missing_ok -> StopPipeline
 
 async def test_archive_step(tmp_path, monkeypatch):
     monkeypatch.setenv("LAKE_DATA_DIR", str(tmp_path))
@@ -115,3 +121,14 @@ def test_ensuretable_fallback_type():
     df = pl.DataFrame(schema={"tm": pl.Time, "pk": pl.Int64})  
     ddl = EnsureTable("t", order_by=["pk"])._build_ddl(df.to_arrow().schema)
     assert "`tm` Nullable(String)" in ddl
+
+async def test_optimize_runs_final():
+    calls = []
+    class _CH:
+        def command(self, sql): calls.append(sql)
+    out = await Optimize("t").apply(pl.DataFrame({"a": [1]}), Data(ch=_CH()))
+    assert calls == ["OPTIMIZE TABLE t FINAL"]
+    assert out["a"].to_list() == [1]        
+
+def test_optimize_repr():
+    assert repr(Optimize("t"))

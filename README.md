@@ -23,7 +23,8 @@ steps for the rest.
 - **Pipeline** - Just a list of async `Step`s. Add, remove, reorder.
 - **Polars-native** - one engine end to end (Arrow under the hood).
 - **Async** - steps are `async`, so you can fan out concurrent API/DB calls inside a step.
-- **Data lake + ClickHouse** - parquet storage helpers and a ClickHouse loader are included. In future other databases.
+- **Many databases** - ClickHouse, PostgreSQL, MS SQL Server, MongoDB and SQLite connectors, plus a parquet data lake. Read from one, load into another.
+- **Schema-guaranteed** - validate and coerce data against a Pydantic model, so downstream gets exactly the types you declared.
 - **Deduplication** - row-hash change detection loads only new or changed rows.
 - **Airflow-friendly** - one pipeline = one task. etlpy moves the data; Airflow orchestrates.
 
@@ -38,7 +39,7 @@ pip install -e ".[all]"
 # or pick the stage you need
 pip install -e ".[extractor]"     # httpx-based API steps
 pip install -e ".[transformer]"   # Polars transform steps
-pip install -e ".[loader]"        # ClickHouse + data lake
+pip install -e ".[loader]"        # data lake and steps for databases
 ```
 
 Requires Python 3.13+.
@@ -126,12 +127,63 @@ pipeline a clean fit for a single Airflow task.
 Every step is one small class with an `async def apply(self, df, data) -> df`. Below is the full set.
 Missing one? Subclass `Step`, implement `apply`, and drop it into the list.
 
+## Schema guarantee with `ToSchema`
+
+Raw data lies: missing fields, wrong types, extra columns, values that don't parse.
+`ToSchema` is the gate that turns messy input into exactly the data you declared. It
+validates and coerces **every row against a Pydantic model** and returns a DataFrame whose
+schema comes from that model - what is not in the model is dropped, what cannot be coerced
+raises. Downstream steps and your warehouse table then get clean, typed data by construction.
+
+Declare the canon as a Pydantic model:
+
+```python
+from datetime import date
+from pydantic import BaseModel
+
+class Transaction(BaseModel):
+    id: int
+    amount: float
+    currency: str
+    txn_date: date
+    note: str | None = None          # optional -> nullable column
+```
+
+Drop `ToSchema` into a pipeline:
+
+```python
+from etl.transformer.steps import ToSchema, GenerateKey, RowHash
+
+Pipeline([
+    # ... read raw data ...
+    ToSchema(Transaction, mapping={"trans_id": "id", "sum": "amount"}),  # rename + validate + type
+    GenerateKey(columns=["id"], key_name="pk"),
+    RowHash(),
+    # ... load ...
+])
+```
+
+What the step guarantees:
+
+- **Exact schema & types** - columns and dtypes come from the model, not from guessing on the
+  first N rows: `int` -> `Int64`, `date` -> `Date`, `str | None` -> nullable `String`, and so on.
+- **Extra columns dropped** - anything outside the model is discarded.
+- **Fail fast** - a value that can't be coerced (or a missing required field) raises, so bad
+  upstream data never silently reaches the warehouse.
+- **`mapping`** - rename raw source fields to the canonical names (1:1) before validation.
+
+`ToSchema` never imports pydantic itself - it only uses the model you pass, so **pydantic
+stays an optional, user-side dependency**. It also works with
+[Patito](https://github.com/JakobGM/patito) models (Pydantic on Polars). Validation runs per
+row - thorough rather than fast; correctness is the point, speed is recovered downstream.
+
 ### Extract
 
 - **`OAuthenticate(url, credentials, fields=OAuthFields(...), send="json", method="POST", auth_header=None, headers=None, store="auth", timeout=60.0)`** - non-interactive OAuth 2.0 token flow (client-credentials). Sends `credentials` (JSON or form via `send`), pulls the token out of the response by dotted paths (`fields`), applies `auth_header` (e.g. `{"Authorization": "Bearer {token}"}`, `{token}` is filled in) to the shared httpx client, and stores the parsed auth in `data["auth"]`. Request-level headers (gateway API keys, `Content-Type`) go in `headers`.
 - **`AuthenticateBasic(user, password, headers=None, timeout=60.0)`** _(HTTP Basic, RFC 7617)_ - sets `httpx.BasicAuth(user, password)` on the shared client so every downstream request carries `Authorization: Basic ...`. No token exchange - the header is static.
 - **`Read(layer, name)`** _(data lake)_ - read `{name}.parquet` from a lake layer into the pipeline df.
 - **`Read(query)`** _(ClickHouse)_ - run a SQL query (client from `data["ch"]`) and return the result as a Polars frame.
+- **`Reads(layer, name, mode=STATIC, date_from=None, date_to=None, pattern="*.parquet", missing_ok=False)`** _(data lake)_ - read and concat every parquet in a lake folder, with an optional inclusive date range on the file name.
 - **`Connect(host, port=8123, database, username, password, secure=False)`** _(ClickHouse)_ - open a clickhouse-connect client (extra kwargs are forwarded) and store it in `data["ch"]`.
 
 > **`OAuthFields`** maps where each token-response field lives, e.g.
@@ -156,6 +208,8 @@ Missing one? Subclass `Step`, implement `apply`, and drop it into the list.
 - **`Aggregate(group_by, aggregations)`** - group + aggregate, e.g. `{"amount": ["sum", "mean"]}`; output columns are `{column}_{func}`.
 - **`Join(other, on, how="inner", select=None, prefix=None)`** - join with another frame **or a sub-`Pipeline`** (run to produce the right side); `select` / `prefix` shape the right columns.
 - **`ExtractEntities(sources, defaults=None)`** - stack several column groups into one long table (e.g. sender/receiver columns into a single `party` table).
+- **`ToSchema(model, mapping=None)`** - validate and coerce the df against a Pydantic model; output has the model's exact schema (see [Schema guarantee](#schema-guarantee-with-toschema)).
+- **`Union(other, how="vertical")`** - stack another DataFrame **or a sub-`Pipeline`** onto the df (`vertical` / `diagonal` / `horizontal`).
 - **`SQL(query, view_name="source")`** - run a Polars-SQL query over the df (registered as `view_name`); `SQL.from_file(path)` loads the query from a `.sql` file.
 - **`Lambda(func)`** - apply an arbitrary `df -> df` callable (escape hatch for one-off logic).
 
@@ -165,7 +219,30 @@ Missing one? Subclass `Step`, implement `apply`, and drop it into the list.
 - **`Delta(table, keys)`** - keep only new or changed rows by comparing `row_hash` against the table (needs a `ReplacingMergeTree`-family engine). The core of idempotent loads.
 - **`Insert(table)`** - insert the df into a ClickHouse table via Arrow (an empty / `None` frame is skipped).
 - **`Save(name, layer="raw")`** _(data lake)_ - write the df to a lake layer as `{name}.parquet`, overwriting in place.
+- **`Optimize(table)`** _(ClickHouse)_ - `OPTIMIZE TABLE ... FINAL` to collapse ReplacingMergeTree duplicates (expensive; run after a load, not per row).
 - **`Archive(layer, name)`** _(data lake)_ - move a lake file into the `archive` layer (e.g. after a successful load).
+
+## Connectors
+
+etlpy ships steps for several databases. **Drivers are not bundled** - there are many
+databases, so you install only the one you need. Each `Connect` opens a client and stores it
+in `data[...]`; the read/load steps pick it up from there.
+
+| Database          | Steps                                                           | `data` key       | Driver (install yourself) |
+| ----------------- | --------------------------------------------------------------- | ---------------- | ------------------------- |
+| **ClickHouse**    | `Connect`, `Read`, `EnsureTable`, `Delta`, `Insert`, `Optimize` | `data["ch"]`     | `clickhouse-connect`      |
+| **PostgreSQL**    | `Connect`, `Read`, `EnsureTable`, `Insert`                      | `data["pg"]`     | `asyncpg`                 |
+| **MS SQL Server** | `Connect`, `Read`, `EnsureTable`, `Insert`                      | `data["mssql"]`  | `aioodbc` (+ ODBC driver) |
+| **MongoDB**       | `Connect`, `Read`, `EnsureTable`, `Delta`, `Upsert`             | `data["mongo"]`  | `pymongo` (async)         |
+| **SQLite**        | `Connect`, `Read`, `EnsureTable`, `Insert`                      | `data["sqlite"]` | `aiosqlite`               |
+
+Import `Connect`/`Read` from `etl.extractor.steps.<db>` and the write steps from
+`etl.loader.steps.<db>`. SQL reads are parameterized (injection-safe): ClickHouse
+`{name:Type}`, Postgres `$1`, MS SQL / SQLite `?`; MongoDB uses a query dict.
+
+> **SQLite** is meant for tests and small local datasets (great as an in-memory `:memory:`
+> backend). It is a single-file, single-writer engine and is **not suitable for storing large
+> data** - use ClickHouse or Postgres for that.
 
 ## Testing
 
