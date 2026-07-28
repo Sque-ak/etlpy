@@ -16,9 +16,10 @@ class _FakeCollection:
     def find(self, filter=None, projection=None): return _FakeCursor(list(self.docs))
     async def create_index(self, keys, **kw): self.indexes.append((keys, kw))
     async def bulk_write(self, ops, ordered=True): self.written = ops
-    def aggregate(self, pipeline, **kw):         
+    async def aggregate(self, pipeline, **kw):     
         self.agg_pipeline = pipeline
         return _FakeCursor(list(self.docs))
+
 
 class _FakeDB:
     def __init__(self, coll=None): self.coll = coll or _FakeCollection()
@@ -52,12 +53,8 @@ def test_repr_mongo_extractor():
     assert repr(Connect(host="x", database="y"))
     assert repr(Read("c"))
 
-def aggregate(self, pipeline, **kw):
-    self.agg_pipeline = pipeline
-    return _FakeCursor(list(self.docs))
-
 async def test_mongo_read_aggregate():
     coll = _FakeCollection(docs=[{"id": "abc", "amount": 10}])
     out = await Read("txn", pipeline=[{"$lookup": {}}]).apply(None, Data(mongo=_FakeDB(coll)))
-    assert coll.agg_pipeline == [{"$lookup": {}}]      # aggregate вызван с пайплайном
+    assert coll.agg_pipeline == [{"$lookup": {}}]     
     assert out["id"].to_list() == ["abc"]

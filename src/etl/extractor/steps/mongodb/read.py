@@ -52,7 +52,7 @@ class Read(Step):
     async def apply(self, df=None, data=None) -> pl.DataFrame:
         coll = data["mongo"][self.collection]
         if self.pipeline is not None:
-            cursor = coll.aggregate(self.pipeline)      
+            cursor = await coll.aggregate(self.pipeline)  
         else:
             cursor = coll.find(self.filter, self.projection)
             if self.sort:
