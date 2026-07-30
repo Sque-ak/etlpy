@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/status-alpha-yellow.svg" alt="Alpha">
   <img src="https://img.shields.io/badge/coverage-100%25-brightgreen.svg" alt="Coverage 100%">
-  <img src="https://img.shields.io/pypi/v/etlpytools.svg" alt="PyPI">
+  <img src="https://img.shields.io/pypi/v/etlpy-tools" alt="PyPI">
 </p>
 
 ---
