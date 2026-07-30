@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="resources/logo.png" alt="etlpy" width="360">
+  <img src="https://raw.githubusercontent.com/Sque-ak/etlpy/main/resources/logo.png" alt="etlpy" width="360">
 </p>
 
 <p align="center">
@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/status-alpha-yellow.svg" alt="Alpha">
   <img src="https://img.shields.io/badge/coverage-100%25-brightgreen.svg" alt="Coverage 100%">
+  <img src="https://img.shields.io/pypi/v/etlpytools.svg" alt="PyPI">
 </p>
 
 ---
@@ -30,17 +31,20 @@ steps for the rest.
 
 ## Installation
 
-> Not on PyPI yet — install from source for now.
-
 ```bash
-# everything
-pip install -e ".[all]"
+pip install etlpy-tools            # core tools kit
 
-# or pick the stage you need
-pip install -e ".[extractor]"     # httpx-based API steps
-pip install -e ".[transformer]"   # Polars transform steps
-pip install -e ".[loader]"        # data lake and steps for databases
+# or with the stage extras you need
+pip install "etlpy-tools[all]"          # everything
+pip install "etlpy-tools[extractor]"    # httpx-based API steps
+pip install "etlpy-tools[transformer]"  # Polars transform steps
+pip install "etlpy-tools[loader]"       # data lake + DB loaders
 ```
+
+> Installed as **`etlpy-tools`**, imported as **`etl`** e.g. `from etl.generic import Pipeline`.
+
+Database drivers are **not** bundled install the one you use:
+`clickhouse-connect`, `asyncpg`, `aioodbc`, `pymongo`, or `aiosqlite`.
 
 Requires Python 3.13+.
 
@@ -255,7 +259,7 @@ pip install -e ".[all,test]"
 pytest -q
 ```
 
-<p align="center"> <img src="resources/100cov.png" alt="100% test coverage - 102 passed" width="640"> </p>
+<p align="center"> <img src="https://raw.githubusercontent.com/Sque-ak/etlpy/main/resources/100cov.png" alt="100% coverage" width="640"> </p>
 
 ## Status
 

@@ -1,21 +1,38 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77"]        
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "etlpy"
-version = "1.2.0"
-description = "A flexible set of utilities to extract, transform, and load data in your own ETL service"
-dependencies = [
-    "polars>=1.41.2", 
-    "polars-hash>=0.6.0",
-    "schedule>=1.2.2",
+name = "etlpy-tools"
+version = "1.0.0"
+description = "A composable, async, Polars-native ETL toolkit"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Vladimir Novotorzhin", email = "include.dos.h@yandex.ru" }]
+keywords = ["etl", "polars", "clickhouse", "airflow", "data-pipeline"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries",
 ]
+dependencies = [
+    "polars>=1.41.2",
+    "polars-hash>=0.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Sque-ak/etlpy"
+Repository = "https://github.com/Sque-ak/etlpy"
+Issues = "https://github.com/Sque-ak/etlpy/issues"
 
 [project.optional-dependencies]
 extractor = [
     "httpx>=0.28.1",
-    "etlpy[loader]",
+    "etlpy-tools[loader]",
 ]
 transformer = [
     "polars>=1.41.2",
@@ -32,10 +49,10 @@ test = [
     "pymongo>=4.9",
     "aioodbc>=0.5.0",
     "asyncpg>=0.31.0",
-    "etlpy[all]",
+    "etlpy-tools[all]",
 ]
 
-all = ["etlpy[extractor,transformer,loader]"]
+all = ["etlpy-tools[extractor,transformer,loader]"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -43,12 +60,13 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["etl*"]
+exclude = ["*.tests", "*.tests.*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
 testpaths = ["src"]
-markers = ["integration: needs external services (Docker/ClickHouse)"]
+markers = ["integration: needs external services"]
 
 [tool.coverage.run]
 source = ["etl"]
