@@ -261,10 +261,6 @@ pytest -q
 
 <p align="center"> <img src="https://raw.githubusercontent.com/Sque-ak/etlpy/main/resources/100cov.png" alt="100% coverage" width="640"> </p>
 
-## Status
-
-Alpha, under active development. A PyPI release is planned.
-
 ## License
 
 Released under the [MIT License](LICENSE).
