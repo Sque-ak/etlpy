@@ -8,6 +8,7 @@ from etl.loader.steps.datalake import Save
 from etl.extractor.steps.datalake import Read
 from etl.extractor.steps.clickhouse import Connect
 from etl.loader.steps.clickhouse import EnsureTable, Insert
+from etl.generic import pipeline as pipe_mod
 
 class _Stop(Step):
     def __init__(self, df=None):
@@ -123,3 +124,75 @@ async def test_heavy_pipeline_e2e(tmp_path, monkeypatch, ch_conn):
     assert got["amount_sum"].to_list() == [600, 600]
     assert "big" in got.columns
 
+
+pytest.fixture(autouse=True)
+def _clear_subscribers():
+    pipe_mod._subscribers.clear()
+    yield
+    pipe_mod._subscribers.clear()
+
+
+class _Add(Step):
+    async def apply(self, df, data=None):
+        return pl.DataFrame({"a": [1]}).with_columns(pl.lit(1).alias("c"))
+
+class _Boom(Step):
+    async def apply(self, df, data=None):
+        raise ValueError("boom")
+
+
+async def test_events_order():
+    events = []
+    pipe_mod.subscribe(lambda e, p: events.append(e))
+    await Pipeline([_Add()], dataframe=pl.DataFrame({"a": [1]})).run()
+    assert events == ["pipeline_start", "step_start", "step_end", "pipeline_end"]
+
+async def test_end_status_completed():
+    seen = {}
+    pipe_mod.subscribe(lambda e, p: seen.setdefault(e, p))
+    await Pipeline([_Add()], dataframe=pl.DataFrame({"a": [1]})).run()
+    assert seen["pipeline_end"]["status"] == "completed"
+
+async def test_stop_emits_step_stop_and_terminal():
+    events = []
+    pipe_mod.subscribe(lambda e, p: events.append((e, p.get("status"))))
+    await Pipeline([_Stop()], dataframe=pl.DataFrame({"a": [1]})).run()
+    names = [e for e, _ in events]
+    assert "step_stop" in names
+    assert names[-1] == "pipeline_end"
+    assert dict(events)["pipeline_end"] == "stopped"
+
+async def test_step_error_event_and_terminal():
+    events = []
+    pipe_mod.subscribe(lambda e, p: events.append((e, p.get("status"))))
+    with pytest.raises(ValueError):
+        await Pipeline([_Boom()], dataframe=pl.DataFrame({"a": [1]})).run()
+    names = [e for e, _ in events]
+    assert "step_error" in names
+    assert names[-1] == "pipeline_end"
+    assert dict(events)["pipeline_end"] == "error"
+
+async def test_async_subscriber_awaited():
+    hits = []
+    async def sub(e, p):
+        hits.append(e)
+    pipe_mod.subscribe(sub)
+    await Pipeline([_Add()], dataframe=pl.DataFrame({"a": [1]})).run()
+    assert "pipeline_end" in hits
+
+async def test_broken_subscriber_does_not_crash():
+    pipe_mod.subscribe(lambda e, p: (_ for _ in ()).throw(RuntimeError("plugin bug")))
+    out = await Pipeline([_Add()], dataframe=pl.DataFrame({"a": [1]})).run()
+    assert "c" in out.columns
+
+async def test_unsubscribe():
+    events = []
+    fn = lambda e, p: events.append(e)
+    pipe_mod.subscribe(fn); pipe_mod.unsubscribe(fn)
+    await Pipeline([_Add()], dataframe=pl.DataFrame({"a": [1]})).run()
+    assert events == []
+
+def test_subscribe_no_duplicate():
+    fn = lambda e, p: None
+    pipe_mod.subscribe(fn); pipe_mod.subscribe(fn)
+    assert pipe_mod._subscribers.count(fn) == 1
