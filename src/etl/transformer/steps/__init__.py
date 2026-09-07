@@ -18,11 +18,13 @@ from etl.transformer.steps.extract_entities import ExtractEntities
 from etl.transformer.steps.clear_text import ClearText
 from etl.transformer.steps.union import Union
 from etl.transformer.steps.to_schema import ToSchema
+from etl.transformer.steps.fill_blank import FillBlank
 
 __all__ = [
     "Union",
     "DropNulls",
     "FillNulls",
+    "FillBlank",
     "DropDuplicates",
     "DropColumns",
     "RenameColumns",

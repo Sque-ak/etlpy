@@ -203,6 +203,7 @@ row - thorough rather than fast; correctness is the point, speed is recovered do
 - **`DropDuplicates(subset=None)`** - drop duplicate rows (by `subset`, or all columns).
 - **`DropNulls(subset=None)`** - drop rows with a null in any of `subset`.
 - **`FillNulls(value, columns=None)`** - fill nulls; `value` is a scalar or a `{column: value}` dict.
+- **`FillBlank(values, when=None)`** - fill blank cells with per-column defaults. "Blank" = null, and for string columns also an empty / whitespace-only string (unlike `FillNulls`, which only catches nulls). `when` limits filling to rows matching a Polars boolean expression, e.g. `FillBlank({"currency": "KZT"}, when=pl.col("bank") == "acme")`.
 - **`FilterRows(expr)`** - keep rows matching a Polars boolean expression, e.g. `pl.col("amount") > 0`.
 - **`TrimString(columns=None)`** - strip whitespace from string columns (`None` / `"*"` = all string columns).
 - **`ClearText(columns="*")`** - clean text: collapse newlines to spaces, drop quotes/backslashes, trim.

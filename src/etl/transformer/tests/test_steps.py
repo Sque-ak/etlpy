@@ -19,8 +19,7 @@ from etl.transformer.steps.normalize_numeric import NormalizeNumeric
 from etl.transformer.steps.aggregate import Aggregate
 from etl.transformer.steps.join import Join
 from etl.transformer.steps.extract_entities import ExtractEntities
-from etl.transformer.steps import Union
-from etl.transformer.steps import ToSchema
+from etl.transformer.steps import Union, ToSchema, FillBlank
 
 async def _apply(step, df):
     return await step.apply(df, Data())  
@@ -203,3 +202,25 @@ async def test_toschema_list_field():
         tags: list[str] | None = None
     out = await ToSchema(_M).apply(pl.DataFrame({"tags": [["a", "b"]]}), Data())
     assert out.schema["tags"] == pl.List(pl.String)
+
+async def test_fill_blank_null_and_empty_strings():
+    df = pl.DataFrame({"name": [None, "", "   ", "x"]})
+    out = await _apply(FillBlank({"name": "unknown"}), df)
+    assert out["name"].to_list() == ["unknown", "unknown", "unknown", "x"]
+
+async def test_fill_blank_non_string_only_null():
+    df = pl.DataFrame({"amount": [None, 5]})
+    out = await _apply(FillBlank({"amount": 0}), df)
+    assert out["amount"].to_list() == [0, 5]
+
+async def test_fill_blank_when_condition():
+    df = pl.DataFrame({"bank": ["acme", "other"], "currency": [None, None]})
+    out = await _apply(FillBlank({"currency": "KZT"}, when=pl.col("bank") == "acme"), df)
+    assert out["currency"].to_list() == ["KZT", None]      # заполнили только acme
+
+async def test_fill_blank_multiple_columns():
+    out = await _apply(FillBlank({"a": 1, "b": "z"}), pl.DataFrame({"a": [None], "b": [""]}))
+    assert out.row(0) == (1, "z")
+
+def test_fill_blank_repr():
+    assert repr(FillBlank({"a": 1}))
