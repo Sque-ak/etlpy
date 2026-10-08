@@ -16,7 +16,7 @@ class Union(Step):
 
     def __init__(
         self,
-        other: pl.DataFrame | Pipeline,
+        other: pl.DataFrame | Pipeline | list[pl.DataFrame],
         how: str | None = "vertical"
     ) -> None:
         self.other, self.how = other, how
@@ -27,7 +27,13 @@ class Union(Step):
         if isinstance(right, Pipeline):
             right = await right.run()
 
-        return pl.concat([df, right], how=self.how)
+
+        others = list(right) if isinstance(right, list) else [right]
+        frames = [f for f in [df, *others] if f is not None and not f.is_empty()]
+        if not frames:
+            return df if df is not None else pl.DataFrame()
+        
+        return pl.concat(frames, how=self.how)
 
 
     def __repr__(self) -> str:

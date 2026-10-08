@@ -224,3 +224,32 @@ async def test_fill_blank_multiple_columns():
 
 def test_fill_blank_repr():
     assert repr(FillBlank({"a": 1}))
+
+async def test_union_list():
+    others = [pl.DataFrame({"a": [2]}), pl.DataFrame({"a": [3]})]
+    out = await _apply(Union(other=others), pl.DataFrame({"a": [1]}))
+    assert out["a"].to_list() == [1, 2, 3]             
+
+async def test_union_list_skips_empty_incoming():
+    others = [pl.DataFrame({"a": [2]}), pl.DataFrame({"a": [3]})]
+    out = await Union(other=others).apply(pl.DataFrame(), Data())
+    assert out["a"].to_list() == [2, 3]                 
+
+async def test_union_none_incoming():
+    out = await Union(other=pl.DataFrame({"a": [2]})).apply(None, Data())
+    assert out["a"].to_list() == [2]
+
+async def test_union_does_not_mutate_other():
+    others = [pl.DataFrame({"a": [2]})]
+    step = Union(other=others)
+    first = await step.apply(pl.DataFrame({"a": [1]}), Data())
+    second = await step.apply(pl.DataFrame({"a": [1]}), Data())
+    assert len(others) == 1                             
+    assert first.equals(second)                        
+async def test_union_diagonal():
+    out = await Union(other=pl.DataFrame({"b": [2]}), how="diagonal").apply(pl.DataFrame({"a": [1]}), Data())
+    assert out.columns == ["a", "b"] and out.height == 2
+
+async def test_union_all_empty():
+    out = await Union(other=[pl.DataFrame()]).apply(pl.DataFrame(), Data())
+    assert out.is_empty()                              
