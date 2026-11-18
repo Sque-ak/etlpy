@@ -31,24 +31,39 @@ class Join(Step):
     def __init__(
         self,
         other: DataFrame | Pipeline,
-        on: str | list[str],
+        on: str | list[str] | None = None,
         how: str = "inner",
         select: list[str] | None = None,
         prefix: str | None = None,
     ) -> None:
         self.other = other
-        self.on = [on] if isinstance(on, str) else list(on)
+        
+        if on is None:
+            self.on = []
+        else:
+            self.on = [on] if isinstance(on, str) else list(on)
+
+        if how == "cross" and self.on:
+            raise ValueError("Join(how='cross') does not accept 'on'")
+        if how != "cross" and not self.on:
+            raise ValueError(f"Join(how={how!r}) requires 'on'")
+
         self.how = how
         self.select = select
         self.prefix = prefix
 
     async def apply(self, df: DataFrame, data = None):
         right = self.other
-        
+
         if isinstance(right, Pipeline):
             right = await right.run()
 
-        return df.join(self._prepare_right(right), on=self.on, how=self.how)
+        right = self._prepare_right(right)
+
+        if self.how == "cross":
+            return df.join(right, how="cross")
+
+        return df.join(right, on=self.on, how=self.how)
 
 
     def _prepare_right(self, right: DataFrame) -> DataFrame:
